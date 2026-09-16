@@ -1,0 +1,35 @@
+Timing is on.
+TRUNCATE TABLE
+Time: 1.797 ms
+TRUNCATE TABLE
+Time: 1.364 ms
+INSERT without additional indexes
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Insert on insert_no_indexes  (cost=0.00..5000.00 rows=0 width=0) (actual time=95.309..95.309 rows=0 loops=1)
+   Buffers: shared hit=401548 read=5 dirtied=1112 written=1112, temp read=171 written=171
+   ->  Subquery Scan on "*SELECT*"  (cost=0.00..5000.00 rows=100000 width=174) (actual time=3.339..37.489 rows=100000 loops=1)
+         Buffers: shared hit=100008 read=4 dirtied=2, temp read=171 written=171
+         ->  Function Scan on generate_series  (cost=0.00..4250.00 rows=100000 width=80) (actual time=3.272..18.263 rows=100000 loops=1)
+               Buffers: temp read=171 written=171
+ Planning:
+   Buffers: shared hit=2 read=1
+ Planning Time: 0.065 ms
+ Execution Time: 95.452 ms
+(10 rows)
+
+Time: 100.903 ms
+INSERT with additional indexes
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Insert on insert_with_indexes  (cost=0.00..5000.00 rows=0 width=0) (actual time=311.672..311.673 rows=0 loops=1)
+   Buffers: shared hit=1020562 read=5 dirtied=2259 written=2257, temp read=171 written=171
+   ->  Subquery Scan on "*SELECT*"  (cost=0.00..5000.00 rows=100000 width=174) (actual time=2.932..38.663 rows=100000 loops=1)
+         Buffers: shared hit=100010 read=1 dirtied=1, temp read=171 written=171
+         ->  Function Scan on generate_series  (cost=0.00..4250.00 rows=100000 width=80) (actual time=2.887..18.997 rows=100000 loops=1)
+               Buffers: temp read=171 written=171
+ Planning Time: 0.037 ms
+ Execution Time: 311.814 ms
+(8 rows)
+
+Time: 315.676 ms

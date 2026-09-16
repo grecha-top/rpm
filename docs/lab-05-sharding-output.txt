@@ -1,0 +1,18 @@
+Lab 05 sharding report
+Entity: bookings
+Shard key: user_id
+Total records: 100000
+
+hash(user_id) % 3 distribution loaded to PostgreSQL shards:
+shard-0 -> 33316 records (33.32%)
+shard-1 -> 33437 records (33.44%)
+shard-2 -> 33247 records (33.25%)
+
+Consistent hashing distribution with 3 shards:
+shard-0 -> 34590 records (34.59%)
+shard-1 -> 31583 records (31.58%)
+shard-2 -> 33827 records (33.83%)
+
+3 -> 4 shards movement:
+hash(key) % N moved: 75142 records (75.14%)
+Consistent hashing moved: 27450 records (27.45%)

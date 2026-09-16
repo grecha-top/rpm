@@ -1,0 +1,137 @@
+Timing is on.
+ rows_count 
+------------
+    5000000
+(1 row)
+
+Time: 56.987 ms
+ table_size | total_size 
+------------+------------
+ 326 MB     | 433 MB
+(1 row)
+
+Time: 0.555 ms
+SELECT by user_id
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..68713.98 rows=51 width=36) (actual time=3.796..50.697 rows=43 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   Buffers: shared hit=12369 read=29298 written=8
+   ->  Parallel Seq Scan on events  (cost=0.00..67708.88 rows=21 width=36) (actual time=5.575..48.226 rows=14 loops=3)
+         Filter: (user_id = 123)
+         Rows Removed by Filter: 1666652
+         Buffers: shared hit=12369 read=29298 written=8
+ Planning:
+   Buffers: shared hit=18
+ Planning Time: 0.057 ms
+ Execution Time: 50.712 ms
+(12 rows)
+
+Time: 51.375 ms
+SELECT by created_at range: 1 day
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..80489.12 rows=13635 width=36) (actual time=0.188..138.153 rows=13583 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   Buffers: shared hit=12465 read=29202 written=96
+   ->  Parallel Seq Scan on events  (cost=0.00..78125.62 rows=5681 width=36) (actual time=0.082..135.457 rows=4528 loops=3)
+         Filter: (created_at >= (now() - '1 day'::interval))
+         Rows Removed by Filter: 1662139
+         Buffers: shared hit=12465 read=29202 written=96
+ Planning:
+   Buffers: shared hit=7
+ Planning Time: 0.049 ms
+ Execution Time: 138.490 ms
+(12 rows)
+
+Time: 139.299 ms
+Filter + sort + limit
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=68709.36..68714.26 rows=42 width=36) (actual time=53.069..54.530 rows=43 loops=1)
+   Buffers: shared hit=12633 read=29106
+   ->  Gather Merge  (cost=68709.36..68714.26 rows=42 width=36) (actual time=53.068..54.527 rows=43 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=12633 read=29106
+         ->  Sort  (cost=67709.34..67709.39 rows=21 width=36) (actual time=52.050..52.051 rows=14 loops=3)
+               Sort Key: created_at DESC
+               Sort Method: quicksort  Memory: 26kB
+               Buffers: shared hit=12633 read=29106
+               Worker 0:  Sort Method: quicksort  Memory: 26kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Parallel Seq Scan on events  (cost=0.00..67708.88 rows=21 width=36) (actual time=3.566..51.992 rows=14 loops=3)
+                     Filter: (user_id = 123)
+                     Rows Removed by Filter: 1666652
+                     Buffers: shared hit=12561 read=29106
+ Planning:
+   Buffers: shared hit=19 read=1
+ Planning Time: 0.056 ms
+ Execution Time: 54.554 ms
+(20 rows)
+
+Time: 55.418 ms
+Aggregation: last 30 days grouped by event_type
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize GroupAggregate  (cost=79975.34..79976.36 rows=4 width=15) (actual time=161.683..163.169 rows=4 loops=1)
+   Group Key: event_type
+   Buffers: shared hit=12673 read=29010 written=96
+   ->  Gather Merge  (cost=79975.34..79976.28 rows=8 width=15) (actual time=161.680..163.164 rows=12 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=12673 read=29010 written=96
+         ->  Sort  (cost=78975.32..78975.33 rows=4 width=15) (actual time=160.167..160.167 rows=4 loops=3)
+               Sort Key: event_type
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=12673 read=29010 written=96
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Partial HashAggregate  (cost=78975.24..78975.28 rows=4 width=15) (actual time=160.150..160.151 rows=4 loops=3)
+                     Group Key: event_type
+                     Batches: 1  Memory Usage: 24kB
+                     Buffers: shared hit=12657 read=29010 written=96
+                     Worker 0:  Batches: 1  Memory Usage: 24kB
+                     Worker 1:  Batches: 1  Memory Usage: 24kB
+                     ->  Parallel Seq Scan on events  (cost=0.00..78125.62 rows=169923 width=7) (actual time=0.042..148.874 rows=136957 loops=3)
+                           Filter: (created_at >= (now() - '30 days'::interval))
+                           Rows Removed by Filter: 1529710
+                           Buffers: shared hit=12657 read=29010 written=96
+ Planning:
+   Buffers: shared hit=13
+ Planning Time: 0.062 ms
+ Execution Time: 163.213 ms
+(27 rows)
+
+Time: 164.140 ms
+Aggregation: 365 days grouped by date
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=422890.67..524443.83 rows=4999540 width=12) (actual time=914.223..914.507 rows=366 loops=1)
+   Group Key: date(created_at)
+   Planned Partitions: 64  Batches: 1  Memory Usage: 3121kB
+   Buffers: shared hit=12753 read=28914
+   ->  Seq Scan on events  (cost=0.00..141666.55 rows=4999540 width=4) (actual time=51.847..641.802 rows=4999998 loops=1)
+         Filter: (created_at >= (now() - '365 days'::interval))
+         Rows Removed by Filter: 2
+         Buffers: shared hit=12753 read=28914
+ Planning:
+   Buffers: shared hit=11
+ Planning Time: 0.055 ms
+ JIT:
+   Functions: 8
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 0.228 ms (Deform 0.082 ms), Inlining 25.060 ms, Optimization 12.870 ms, Emission 13.915 ms, Total 52.073 ms
+ Execution Time: 923.076 ms
+(16 rows)
+
+Time: 923.869 ms
+Index sizes
+ indexrelname | index_size 
+--------------+------------
+ events_pkey  | 107 MB
+(1 row)
+
+Time: 1.761 ms

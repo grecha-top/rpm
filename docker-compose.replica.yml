@@ -1,0 +1,63 @@
+services:
+  postgres-primary:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: rpm
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: replicator
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "hot_standby=on"
+    ports:
+      - "55432:5432"
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./docker/postgres/primary-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rpm"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  postgres-replica:
+    image: postgres:17-alpine
+    environment:
+      PGUSER: replicator
+      PGPASSWORD: replicator
+    command: >
+      sh -c "
+        if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+          rm -rf /var/lib/postgresql/data/*
+          until pg_basebackup -h postgres-primary -D /var/lib/postgresql/data -U replicator -v -P -R -X stream -C -S rpm_replica_slot; do
+            echo 'Waiting for primary...'
+            sleep 2
+          done
+          chown -R postgres:postgres /var/lib/postgresql/data
+        fi
+        exec docker-entrypoint.sh postgres
+      "
+    ports:
+      - "55433:5432"
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rpm"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:

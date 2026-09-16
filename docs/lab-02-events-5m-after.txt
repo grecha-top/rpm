@@ -1,0 +1,139 @@
+Timing is on.
+ rows_count 
+------------
+    5000000
+(1 row)
+
+Time: 53.151 ms
+ table_size | total_size 
+------------+------------
+ 326 MB     | 724 MB
+(1 row)
+
+Time: 0.464 ms
+SELECT by user_id
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on events  (cost=4.82..200.25 rows=50 width=36) (actual time=0.048..0.184 rows=43 loops=1)
+   Recheck Cond: (user_id = 123)
+   Heap Blocks: exact=43
+   Buffers: shared hit=13 read=37
+   ->  Bitmap Index Scan on idx_lab02_events_user_created  (cost=0.00..4.81 rows=50 width=0) (actual time=0.042..0.042 rows=43 loops=1)
+         Index Cond: (user_id = 123)
+         Buffers: shared hit=3 read=4
+ Planning:
+   Buffers: shared hit=12
+ Planning Time: 0.044 ms
+ Execution Time: 0.194 ms
+(11 rows)
+
+Time: 0.582 ms
+SELECT by created_at range: 1 day
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on events  (cost=245.80..28028.98 rows=13079 width=36) (actual time=1.750..45.024 rows=13581 loops=1)
+   Recheck Cond: (created_at >= (now() - '1 day'::interval))
+   Heap Blocks: exact=11648
+   Buffers: shared hit=1291 read=10400 written=8717
+   ->  Bitmap Index Scan on idx_lab02_events_created_at  (cost=0.00..242.53 rows=13079 width=0) (actual time=0.988..0.988 rows=13581 loops=1)
+         Index Cond: (created_at >= (now() - '1 day'::interval))
+         Buffers: shared hit=5 read=38
+ Planning:
+   Buffers: shared hit=7 read=4
+ Planning Time: 0.064 ms
+ Execution Time: 45.472 ms
+(11 rows)
+
+Time: 46.123 ms
+Filter + sort + limit
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=201.66..201.78 rows=50 width=36) (actual time=0.192..0.195 rows=43 loops=1)
+   Buffers: shared hit=22 read=28 written=19
+   ->  Sort  (cost=201.66..201.78 rows=50 width=36) (actual time=0.191..0.193 rows=43 loops=1)
+         Sort Key: created_at DESC
+         Sort Method: quicksort  Memory: 28kB
+         Buffers: shared hit=22 read=28 written=19
+         ->  Bitmap Heap Scan on events  (cost=4.82..200.25 rows=50 width=36) (actual time=0.030..0.168 rows=43 loops=1)
+               Recheck Cond: (user_id = 123)
+               Heap Blocks: exact=43
+               Buffers: shared hit=19 read=28 written=19
+               ->  Bitmap Index Scan on idx_lab02_events_user_created  (cost=0.00..4.81 rows=50 width=0) (actual time=0.026..0.026 rows=43 loops=1)
+                     Index Cond: (user_id = 123)
+                     Buffers: shared read=4 written=3
+ Planning:
+   Buffers: shared hit=19 read=1
+ Planning Time: 0.064 ms
+ Execution Time: 0.207 ms
+(17 rows)
+ылваоывлаоывлоаывлоавл
+ылвоаылвоа
+Time: 0.891 ms
+Aggregation: last 30 days grouped by event_type
+                                                                                QUERY PLAN                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize GroupAggregate  (cost=54212.51..54213.53 rows=4 width=15) (actual time=82.838..84.466 rows=4 loops=1)
+   Group Key: event_type
+   Buffers: shared hit=32 read=42777 written=6041
+   ->  Gather Merge  (cost=54212.51..54213.45 rows=8 width=15) (actual time=82.834..84.462 rows=12 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=32 read=42777 written=6041
+         ->  Sort  (cost=53212.49..53212.50 rows=4 width=15) (actual time=81.605..81.606 rows=4 loops=3)
+               Sort Key: event_type
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=32 read=42777 written=6041
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Partial HashAggregate  (cost=53212.41..53212.45 rows=4 width=15) (actual time=81.588..81.589 rows=4 loops=3)
+                     Group Key: event_type
+                     Batches: 1  Memory Usage: 24kB
+                     Buffers: shared hit=16 read=42777 written=6041
+                     Worker 0:  Batches: 1  Memory Usage: 24kB
+                     Worker 1:  Batches: 1  Memory Usage: 24kB
+                     ->  Parallel Bitmap Heap Scan on events  (cost=7693.05..52356.33 rows=171216 width=7) (actual time=20.111..70.665 rows=136956 loops=3)
+                           Recheck Cond: (created_at >= (now() - '30 days'::interval))
+                           Heap Blocks: exact=15353
+                           Buffers: shared hit=16 read=42777 written=6041
+                           ->  Bitmap Index Scan on idx_lab02_events_created_at  (cost=0.00..7590.32 rows=410918 width=0) (actual time=18.017..18.017 rows=410869 loops=1)
+                                 Index Cond: (created_at >= (now() - '30 days'::interval))
+                                 Buffers: shared hit=2 read=1124 written=756
+ Planning:
+   Buffers: shared hit=13
+ Planning Time: 0.063 ms
+ Execution Time: 84.512 ms
+(30 rows)
+
+Time: 85.396 ms
+Aggregation: 365 days grouped by date
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=422919.87..524483.13 rows=5000037 width=12) (actual time=853.841..854.124 rows=366 loops=1)
+   Group Key: date(created_at)
+   Planned Partitions: 64  Batches: 1  Memory Usage: 3121kB
+   Buffers: shared hit=16268 read=25399
+   ->  Seq Scan on events  (cost=0.00..141667.79 rows=5000037 width=4) (actual time=42.470..604.851 rows=4999996 loops=1)
+         Filter: (created_at >= (now() - '365 days'::interval))
+         Rows Removed by Filter: 4
+         Buffers: shared hit=16268 read=25399
+ Planning:
+   Buffers: shared hit=11 read=4
+ Planning Time: 0.069 ms
+ JIT:
+   Functions: 8
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 0.208 ms (Deform 0.081 ms), Inlining 21.598 ms, Optimization 8.816 ms, Emission 12.057 ms, Total 42.679 ms
+ Execution Time: 861.342 ms
+(16 rows)
+
+Time: 862.370 ms
+Index sizes
+         indexrelname          | index_size 
+-------------------------------+------------
+ events_pkey                   | 107 MB
+ idx_lab02_events_created_at   | 107 MB
+ idx_lab02_events_user_created | 150 MB
+ idx_lab02_events_user_id      | 34 MB
+(4 rows)
+
+Time: 2.057 ms

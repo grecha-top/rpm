@@ -1,0 +1,7 @@
+.gocache/
+.gopath/
+api
+generate_data
+*.test
+*.out
+.env

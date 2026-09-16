@@ -1,0 +1,54 @@
+==============================
+Lab 06: queries after sharding
+==============================
+Entity: bookings
+Shard key: user_id
+Active shards: 3
+Sample user_id: 36697
+
+=====================
+1. Single-shard query
+=====================
+Query: bookings by user_id = 36697
+Router result: shard-1
+SQL executed only on shard-1
+Result: count=9 total=209462
+
+==========================
+2. Distributed aggregation
+==========================
+shard-0 partial result:
+  CANCELLED count=11178 seats=33422 total=184564799
+  PAID count=11177 seats=33700 total=184144450
+  PENDING count=10961 seats=32746 total=181010615
+shard-1 partial result:
+  CANCELLED count=11202 seats=33276 total=181882466
+  PAID count=11040 seats=33506 total=184806797
+  PENDING count=11195 seats=33666 total=184495245
+shard-2 partial result:
+  CANCELLED count=11124 seats=33421 total=182841678
+  PAID count=11125 seats=33432 total=183857843
+  PENDING count=10998 seats=32951 total=182081991
+Merged in backend:
+  CANCELLED count=33504 seats=100119 total=549288943
+  PAID count=33342 seats=100638 total=552809090
+  PENDING count=33154 seats=99363 total=547587851
+
+=============================
+3. Distributed ORDER BY/LIMIT
+=============================
+shard-0 returned local top 10
+shard-1 returned local top 10
+shard-2 returned local top 10
+Backend merged candidates and selected global top 10:
+  #1 shard-1 booking_id=3 user_id=3 status=PAID total=15000 created_at=2026-09-13T16:19:36+03:00
+  #2 shard-2 booking_id=1 user_id=1 status=PAID total=6000 created_at=2026-09-13T16:19:36+03:00
+  #3 shard-0 booking_id=2 user_id=2 status=PENDING total=3000 created_at=2026-09-13T16:19:36+03:00
+  #4 shard-0 booking_id=67484 user_id=9008 status=CANCELLED total=9612 created_at=2026-09-13T15:20:57+03:00
+  #5 shard-2 booking_id=53582 user_id=46573 status=PENDING total=14874 created_at=2026-09-13T15:20:57+03:00
+  #6 shard-1 booking_id=88856 user_id=90938 status=CANCELLED total=6416 created_at=2026-09-13T15:20:57+03:00
+  #7 shard-1 booking_id=65054 user_id=37984 status=PENDING total=7170 created_at=2026-09-13T15:20:57+03:00
+  #8 shard-1 booking_id=84369 user_id=29925 status=PENDING total=20634 created_at=2026-09-13T15:20:57+03:00
+  #9 shard-1 booking_id=95248 user_id=38962 status=PAID total=14424 created_at=2026-09-13T14:20:57+03:00
+  #10 shard-0 booking_id=80408 user_id=74705 status=PAID total=7288 created_at=2026-09-13T14:20:57+03:00
+

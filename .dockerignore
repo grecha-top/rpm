@@ -1,0 +1,7 @@
+.git
+.gocache
+.gopath
+.env
+api
+generate_data
+Требования к проекту.pdf

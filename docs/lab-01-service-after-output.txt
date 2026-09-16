@@ -1,0 +1,162 @@
+Timing is on.
+ANALYZE
+Time: 41.374 ms
+ANALYZE
+Time: 2.674 ms
+ANALYZE
+Time: 35.851 ms
+ANALYZE
+Time: 78.617 ms
+Scaling entity
+ bookings_count 
+----------------
+        1050003
+(1 row)
+
+Time: 20.631 ms
+Existing booking indexes
+                 indexname                 |                                                         indexdef                                                          
+-------------------------------------------+---------------------------------------------------------------------------------------------------------------------------
+ bookings_pkey                             | CREATE UNIQUE INDEX bookings_pkey ON public.bookings USING btree (id)
+ idx_bookings_created_at                   | CREATE INDEX idx_bookings_created_at ON public.bookings USING btree (created_at)
+ idx_bookings_event_id                     | CREATE INDEX idx_bookings_event_id ON public.bookings USING btree (event_id)
+ idx_bookings_event_status_created_at_desc | CREATE INDEX idx_bookings_event_status_created_at_desc ON public.bookings USING btree (event_id, status, created_at DESC)
+ idx_bookings_status                       | CREATE INDEX idx_bookings_status ON public.bookings USING btree (status)
+ idx_bookings_user_created_at_desc         | CREATE INDEX idx_bookings_user_created_at_desc ON public.bookings USING btree (user_id, created_at DESC)
+ idx_bookings_user_id                      | CREATE INDEX idx_bookings_user_id ON public.bookings USING btree (user_id)
+(7 rows)
+
+Time: 2.399 ms
+Query 1: bookings by user_id
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on bookings  (cost=684.45..13255.20 rows=51100 width=59) (actual time=0.425..2.800 rows=50011 loops=1)
+   Recheck Cond: (user_id = 123)
+   Heap Blocks: exact=580
+   Buffers: shared hit=625
+   ->  Bitmap Index Scan on idx_bookings_user_id  (cost=0.00..671.68 rows=51100 width=0) (actual time=0.394..0.394 rows=50011 loops=1)
+         Index Cond: (user_id = 123)
+         Buffers: shared hit=45
+ Planning:
+   Buffers: shared hit=14
+ Planning Time: 0.100 ms
+ Execution Time: 3.767 ms
+(11 rows)
+
+Time: 4.530 ms
+Query 2: bookings by event_id and status
+                                                                      QUERY PLAN                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_bookings_event_status_created_at_desc on bookings  (cost=0.43..20.51 rows=4 width=59) (actual time=0.061..0.064 rows=4 loops=1)
+   Index Cond: ((event_id = 123) AND (status = 'PAID'::text))
+   Buffers: shared hit=4 read=3
+ Planning:
+   Buffers: shared hit=8
+ Planning Time: 0.050 ms
+ Execution Time: 0.071 ms
+(7 rows)
+
+Time: 0.479 ms
+Query 3: pagination by user_id and created_at
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..19.55 rows=20 width=59) (actual time=0.032..0.045 rows=20 loops=1)
+   Buffers: shared hit=20 read=3
+   ->  Index Scan using idx_bookings_user_created_at_desc on bookings  (cost=0.43..48866.66 rows=51100 width=59) (actual time=0.031..0.043 rows=20 loops=1)
+         Index Cond: (user_id = 123)
+         Buffers: shared hit=20 read=3
+ Planning:
+   Buffers: shared hit=17
+ Planning Time: 0.038 ms
+ Execution Time: 0.050 ms
+(9 rows)
+
+Time: 0.381 ms
+Real API JOIN: user bookings with event and venue
+                                                                             QUERY PLAN                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=18118.72..24716.93 rows=51100 width=121) (actual time=20.238..36.235 rows=50011 loops=1)
+   Buffers: shared hit=2014
+   ->  Gather Merge  (cost=18118.43..24069.87 rows=51100 width=99) (actual time=20.199..27.741 rows=50011 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=2011
+         ->  Sort  (cost=17118.40..17171.63 rows=21292 width=99) (actual time=18.608..20.205 rows=16670 loops=3)
+               Sort Key: b.created_at DESC
+               Sort Method: quicksort  Memory: 2370kB
+               Buffers: shared hit=2011
+               Worker 0:  Sort Method: quicksort  Memory: 2857kB
+               Worker 1:  Sort Method: quicksort  Memory: 2768kB
+               ->  Hash Join  (cost=3277.56..15587.72 rows=21292 width=99) (actual time=6.092..15.190 rows=16670 loops=3)
+                     Hash Cond: (e.venue_id = v.id)
+                     Buffers: shared hit=1995
+                     ->  Parallel Hash Join  (cost=3243.01..15497.05 rows=21292 width=88) (actual time=5.924..13.213 rows=16670 loops=3)
+                           Hash Cond: (b.event_id = e.id)
+                           Buffers: shared hit=1861
+                           ->  Parallel Bitmap Heap Scan on bookings b  (cost=684.45..12882.60 rows=21292 width=59) (actual time=0.544..1.832 rows=16670 loops=3)
+                                 Recheck Cond: (user_id = 123)
+                                 Heap Blocks: exact=184
+                                 Buffers: shared hit=626
+                                 ->  Bitmap Index Scan on idx_bookings_user_id  (cost=0.00..671.68 rows=51100 width=0) (actual time=0.493..0.493 rows=50011 loops=1)
+                                       Index Cond: (user_id = 123)
+                                       Buffers: shared hit=46
+                           ->  Parallel Hash  (cost=1823.25..1823.25 rows=58825 width=37) (actual time=5.244..5.244 rows=33334 loops=3)
+                                 Buckets: 131072  Batches: 1  Memory Usage: 8128kB
+                                 Buffers: shared hit=1235
+                                 ->  Parallel Seq Scan on events e  (cost=0.00..1823.25 rows=58825 width=37) (actual time=0.004..1.794 rows=33334 loops=3)
+                                       Buffers: shared hit=1235
+                     ->  Hash  (cost=22.02..22.02 rows=1002 width=27) (actual time=0.115..0.115 rows=1002 loops=3)
+                           Buckets: 1024  Batches: 1  Memory Usage: 73kB
+                           Buffers: shared hit=36
+                           ->  Seq Scan on venues v  (cost=0.00..22.02 rows=1002 width=27) (actual time=0.004..0.052 rows=1002 loops=3)
+                                 Buffers: shared hit=36
+   ->  Materialize  (cost=0.29..8.32 rows=1 width=30) (actual time=0.000..0.000 rows=1 loops=50011)
+         Buffers: shared hit=3
+         ->  Index Scan using users_pkey on users u  (cost=0.29..8.31 rows=1 width=30) (actual time=0.029..0.030 rows=1 loops=1)
+               Index Cond: (id = 123)
+               Buffers: shared hit=3
+ Planning:
+   Buffers: shared hit=120 read=3
+ Planning Time: 0.477 ms
+ Execution Time: 37.429 ms
+(44 rows)
+
+Time: 38.505 ms
+Real API aggregation: event stats
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=47.74..47.75 rows=1 width=64) (actual time=0.030..0.030 rows=1 loops=1)
+   Buffers: shared hit=13
+   ->  Bitmap Heap Scan on bookings  (cost=4.51..47.65 rows=11 width=12) (actual time=0.012..0.021 rows=10 loops=1)
+         Recheck Cond: (event_id = 123)
+         Heap Blocks: exact=10
+         Buffers: shared hit=13
+         ->  Bitmap Index Scan on idx_bookings_event_status_created_at_desc  (cost=0.00..4.51 rows=11 width=0) (actual time=0.008..0.008 rows=10 loops=1)
+               Index Cond: (event_id = 123)
+               Buffers: shared hit=3
+ Planning:
+   Buffers: shared hit=27
+ Planning Time: 0.094 ms
+ Execution Time: 0.047 ms
+(13 rows)
+
+Time: 0.769 ms
+Index usage statistics
+ schemaname | relname  |               indexrelname                | idx_scan 
+------------+----------+-------------------------------------------+----------
+ public     | bookings | bookings_pkey                             |        0
+ public     | bookings | idx_bookings_event_status_created_at_desc |        0
+ public     | bookings | idx_bookings_user_created_at_desc         |        0
+ public     | events   | idx_events_starts_at                      |        0
+ public     | bookings | idx_bookings_created_at                   |        1
+ public     | bookings | idx_bookings_status                       |        3
+ public     | bookings | idx_bookings_user_id                      |        6
+ public     | events   | idx_events_venue_id                       |        6
+ public     | bookings | idx_bookings_event_id                     |        8
+ public     | users    | users_email_key                           |   100000
+ public     | venues   | venues_pkey                               |   100030
+ public     | users    | users_pkey                                |  1050006
+ public     | events   | events_pkey                               |  1050035
+(13 rows)
+
+Time: 1.706 ms

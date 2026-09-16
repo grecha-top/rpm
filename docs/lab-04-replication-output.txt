@@ -1,0 +1,21 @@
+--- pg_stat_replication on primary ---
+ application_name |   state   | sync_state | write_lsn | flush_lsn | replay_lsn 
+------------------+-----------+------------+-----------+-----------+------------
+ walreceiver      | streaming | async      | 0/30AB880 | 0/30AB880 | 0/30AB880
+(1 row)
+
+--- write on primary ---
+ id |           email           |   full_name   
+----+---------------------------+---------------
+  4 | replica-check@example.com | Replica Check
+(1 row)
+
+INSERT 0 1
+--- read on replica ---
+ id |           email           |   full_name   
+----+---------------------------+---------------
+  4 | replica-check@example.com | Replica Check
+(1 row)
+
+--- replica read-only check ---
+ERROR:  cannot execute INSERT in a read-only transaction

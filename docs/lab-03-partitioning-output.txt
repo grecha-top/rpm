@@ -1,0 +1,315 @@
+Timing is on.
+Range partitions distribution
+     partition_name      | count  
+-------------------------+--------
+ lab03.events_2026_09_09 | 100186
+ lab03.events_2026_09_10 |  99738
+ lab03.events_2026_09_11 | 100076
+(3 rows)
+
+Time: 9.905 ms
+Insert outside existing range must fail
+Time: 0.418 ms
+Partition pruning by created_at
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=2546.36..2546.38 rows=1 width=8) (actual time=8.390..8.390 rows=1 loops=1)
+   Buffers: shared hit=801
+   ->  Seq Scan on events_2026_09_10 events  (cost=0.00..2297.07 rows=99718 width=0) (actual time=0.004..5.228 rows=99738 loops=1)
+         Filter: ((created_at >= '2026-09-10 00:00:00'::timestamp without time zone) AND (created_at < '2026-09-11 00:00:00'::timestamp without time zone))
+         Buffers: shared hit=801
+ Planning:
+   Buffers: shared hit=29
+ Planning Time: 0.107 ms
+ Execution Time: 8.408 ms
+(9 rows)
+
+Time: 9.111 ms
+No pruning by event_type only
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=5545.26..5545.27 rows=1 width=8) (actual time=15.459..15.461 rows=1 loops=1)
+   Buffers: shared hit=2410 read=90
+   ->  Append  (cost=375.08..5294.59 rows=100266 width=0) (actual time=0.551..12.366 rows=100031 loops=1)
+         Buffers: shared hit=2410 read=90
+         ->  Bitmap Heap Scan on events_2026_09_09 events_1  (cost=375.08..1597.48 rows=33392 width=0) (actual time=0.551..2.751 rows=33320 loops=1)
+               Recheck Cond: ((event_type)::text = 'click'::text)
+               Heap Blocks: exact=805
+               Buffers: shared hit=805 read=30
+               ->  Bitmap Index Scan on events_2026_09_09_event_type_idx  (cost=0.00..366.73 rows=33392 width=0) (actual time=0.501..0.501 rows=33320 loops=1)
+                     Index Cond: ((event_type)::text = 'click'::text)
+                     Buffers: shared read=30
+         ->  Bitmap Heap Scan on events_2026_09_10 events_2  (cost=380.40..1600.92 rows=33562 width=0) (actual time=0.452..2.475 rows=33362 loops=1)
+               Recheck Cond: ((event_type)::text = 'click'::text)
+               Heap Blocks: exact=801
+               Buffers: shared hit=801 read=30
+               ->  Bitmap Index Scan on events_2026_09_10_event_type_idx  (cost=0.00..372.01 rows=33562 width=0) (actual time=0.411..0.411 rows=33362 loops=1)
+                     Index Cond: ((event_type)::text = 'click'::text)
+                     Buffers: shared read=30
+         ->  Bitmap Heap Scan on events_2026_09_11 events_3  (cost=374.46..1594.86 rows=33312 width=0) (actual time=0.492..2.532 rows=33349 loops=1)
+               Recheck Cond: ((event_type)::text = 'click'::text)
+               Heap Blocks: exact=804
+               Buffers: shared hit=804 read=30
+               ->  Bitmap Index Scan on events_2026_09_11_event_type_idx  (cost=0.00..366.13 rows=33312 width=0) (actual time=0.445..0.445 rows=33349 loops=1)
+                     Index Cond: ((event_type)::text = 'click'::text)
+                     Buffers: shared read=30
+ Planning:
+   Buffers: shared hit=12
+ Planning Time: 0.077 ms
+ Execution Time: 15.519 ms
+(29 rows)
+
+Time: 16.683 ms
+Range partitioning by price
+      partition_name      | count 
+--------------------------+-------
+ lab03.products_cheap     |     1
+ lab03.products_medium    |     1
+ lab03.products_expensive |     2
+(3 rows)
+
+Time: 0.529 ms
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Seq Scan on products_medium products  (cost=0.00..1.01 rows=1 width=19) (actual time=0.003..0.003 rows=0 loops=1)
+   Filter: ((price >= '100'::numeric) AND (price < '500'::numeric))
+   Rows Removed by Filter: 1
+   Buffers: shared hit=1
+ Planning:
+   Buffers: shared hit=35
+ Planning Time: 0.078 ms
+ Execution Time: 0.005 ms
+(8 rows)
+
+Time: 0.740 ms
+List partitioning by customer_type
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Seq Scan on customers_b2b customers  (cost=0.00..1.01 rows=1 width=21) (actual time=0.002..0.003 rows=1 loops=1)
+   Filter: ((customer_type)::text = 'B2B'::text)
+   Buffers: shared hit=1
+ Planning:
+   Buffers: shared hit=37
+ Planning Time: 0.073 ms
+ Execution Time: 0.005 ms
+(7 rows)
+
+Time: 0.369 ms
+Unknown list value before and after DEFAULT partition
+Time: 0.291 ms
+CREATE TABLE
+Time: 1.372 ms
+INSERT 0 1
+Time: 0.454 ms
+       partition_name       | count 
+----------------------------+-------
+ lab03.customers_b2c        |     1
+ lab03.customers_b2b        |     1
+ lab03.customers_enterprise |     1
+ lab03.customers_default    |     1
+(4 rows)
+
+Time: 0.360 ms
+Hash partitioning distribution
+   partition_name    | count 
+---------------------+-------
+ lab03.user_events_0 | 50266
+ lab03.user_events_1 | 49897
+ lab03.user_events_2 | 50023
+ lab03.user_events_3 | 49814
+(4 rows)
+
+Time: 6.282 ms
+Partitioning + index
+                                                                      QUERY PLAN                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on events_2026_09_10 events  (cost=4.32..15.82 rows=3 width=33) (actual time=0.051..0.053 rows=2 loops=1)
+   Recheck Cond: (user_id = 12345)
+   Filter: ((created_at >= '2026-09-10 00:00:00'::timestamp without time zone) AND (created_at < '2026-09-11 00:00:00'::timestamp without time zone))
+   Heap Blocks: exact=2
+   Buffers: shared hit=5 read=2
+   ->  Bitmap Index Scan on events_2026_09_10_user_id_idx  (cost=0.00..4.32 rows=3 width=0) (actual time=0.047..0.047 rows=2 loops=1)
+         Index Cond: (user_id = 12345)
+         Buffers: shared hit=3 read=2
+ Planning:
+   Buffers: shared hit=17
+ Planning Time: 0.109 ms
+ Execution Time: 0.063 ms
+(12 rows)
+
+Time: 0.587 ms
+event_type with partitioning and index
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=5545.26..5545.27 rows=1 width=8) (actual time=14.760..14.763 rows=1 loops=1)
+   Buffers: shared hit=2500
+   ->  Append  (cost=375.08..5294.59 rows=100266 width=0) (actual time=0.288..11.698 rows=100031 loops=1)
+         Buffers: shared hit=2500
+         ->  Bitmap Heap Scan on events_2026_09_09 events_1  (cost=375.08..1597.48 rows=33392 width=0) (actual time=0.287..2.414 rows=33320 loops=1)
+               Recheck Cond: ((event_type)::text = 'click'::text)
+               Heap Blocks: exact=805
+               Buffers: shared hit=835
+               ->  Bitmap Index Scan on events_2026_09_09_event_type_idx  (cost=0.00..366.73 rows=33392 width=0) (actual time=0.245..0.245 rows=33320 loops=1)
+                     Index Cond: ((event_type)::text = 'click'::text)
+                     Buffers: shared hit=30
+         ->  Bitmap Heap Scan on events_2026_09_10 events_2  (cost=380.40..1600.92 rows=33562 width=0) (actual time=0.311..2.384 rows=33362 loops=1)
+               Recheck Cond: ((event_type)::text = 'click'::text)
+               Heap Blocks: exact=801
+               Buffers: shared hit=831
+               ->  Bitmap Index Scan on events_2026_09_10_event_type_idx  (cost=0.00..372.01 rows=33562 width=0) (actual time=0.268..0.268 rows=33362 loops=1)
+                     Index Cond: ((event_type)::text = 'click'::text)
+                     Buffers: shared hit=30
+         ->  Bitmap Heap Scan on events_2026_09_11 events_3  (cost=374.46..1594.86 rows=33312 width=0) (actual time=0.288..2.310 rows=33349 loops=1)
+               Recheck Cond: ((event_type)::text = 'click'::text)
+               Heap Blocks: exact=804
+               Buffers: shared hit=834
+               ->  Bitmap Index Scan on events_2026_09_11_event_type_idx  (cost=0.00..366.13 rows=33312 width=0) (actual time=0.248..0.248 rows=33349 loops=1)
+                     Index Cond: ((event_type)::text = 'click'::text)
+                     Buffers: shared hit=30
+ Planning Time: 0.063 ms
+ Execution Time: 14.816 ms
+(27 rows)
+
+Time: 15.526 ms
+Create future partitions job
+ partition_day |              result              
+---------------+----------------------------------
+ 2026-09-11    | exists: lab03.events_2026_09_11
+ 2026-09-12    | created: lab03.events_2026_09_12
+ 2026-09-13    | created: lab03.events_2026_09_13
+ 2026-09-14    | created: lab03.events_2026_09_14
+(4 rows)
+
+Time: 3.854 ms
+Health check OK
+ status |                                                   message                                                   
+--------+-------------------------------------------------------------------------------------------------------------
+ OK     | Partition check OK. Table: events. All required partitions exist. Checked at: 2026-09-13 16:46:22.122149+00
+(1 row)
+
+Time: 1.192 ms
+Simulate missed partition and alert
+DROP TABLE
+Time: 1.034 ms
+  status  |                                                                  message                                                                  
+----------+-------------------------------------------------------------------------------------------------------------------------------------------
+ CRITICAL | Partition alert. Table: events. Missing partitions: events_2026_09_14. Expected horizon: 3 days. Checked at: 2026-09-13 16:46:22.12446+00
+(1 row)
+
+Time: 0.917 ms
+  status  |                                                                  message                                                                   
+----------+--------------------------------------------------------------------------------------------------------------------------------------------
+ CRITICAL | Partition alert. Table: events. Missing partitions: events_2026_09_14. Expected horizon: 3 days. Checked at: 2026-09-13 16:46:22.125547+00
+(1 row)
+
+Time: 0.604 ms
+ id | table_name |  status  |                                                                  message                                                                  |         created_at         
+----+------------+----------+-------------------------------------------------------------------------------------------------------------------------------------------+----------------------------
+  1 | events     | OK       | Partition check OK. Table: events. All required partitions exist. Checked at: 2026-09-13 16:46:22.122149+00                               | 2026-09-13 16:46:22.122149
+  2 | events     | CRITICAL | Partition alert. Table: events. Missing partitions: events_2026_09_14. Expected horizon: 3 days. Checked at: 2026-09-13 16:46:22.12446+00 | 2026-09-13 16:46:22.12446
+(2 rows)
+
+Time: 0.366 ms
+Recover partition and send recovery
+     create_events_partition      
+----------------------------------
+ created: lab03.events_2026_09_14
+(1 row)
+
+Time: 1.484 ms
+ status |                                                   message                                                   
+--------+-------------------------------------------------------------------------------------------------------------
+ OK     | Partition check OK. Table: events. All required partitions exist. Checked at: 2026-09-13 16:46:22.128124+00
+(1 row)
+
+Time: 0.495 ms
+ id | table_name |  status  |                                                                  message                                                                  |         created_at         
+----+------------+----------+-------------------------------------------------------------------------------------------------------------------------------------------+----------------------------
+  1 | events     | OK       | Partition check OK. Table: events. All required partitions exist. Checked at: 2026-09-13 16:46:22.122149+00                               | 2026-09-13 16:46:22.122149
+  2 | events     | CRITICAL | Partition alert. Table: events. Missing partitions: events_2026_09_14. Expected horizon: 3 days. Checked at: 2026-09-13 16:46:22.12446+00 | 2026-09-13 16:46:22.12446
+  3 | events     | OK       | Partition check OK. Table: events. All required partitions exist. Checked at: 2026-09-13 16:46:22.128124+00                               | 2026-09-13 16:46:22.128124
+(3 rows)
+
+Time: 0.277 ms
+Service partitioned bookings: date range pruning
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=14044.69..14044.70 rows=1 width=8) (actual time=21.018..22.450 rows=1 loops=1)
+   Buffers: shared hit=7946
+   ->  Gather  (cost=14044.48..14044.69 rows=2 width=8) (actual time=20.937..22.446 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=7946
+         ->  Partial Aggregate  (cost=13044.48..13044.49 rows=1 width=8) (actual time=19.905..19.906 rows=1 loops=3)
+               Buffers: shared hit=7946
+               ->  Parallel Seq Scan on bookings_2026 bookings_partitioned  (cost=0.00..12316.12 rows=291342 width=0) (actual time=0.005..13.368 rows=233073 loops=3)
+                     Filter: ((created_at >= '2026-01-01 00:00:00+00'::timestamp with time zone) AND (created_at < '2027-01-01 00:00:00+00'::timestamp with time zone))
+                     Buffers: shared hit=7946
+ Planning:
+   Buffers: shared hit=136 read=7
+ Planning Time: 0.290 ms
+ Execution Time: 22.465 ms
+(15 rows)
+
+Time: 23.396 ms
+Service partitioned bookings: user pagination
+                                                                                           QUERY PLAN                                                                                           
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=36.03..36.05 rows=8 width=59) (actual time=0.084..0.085 rows=10 loops=1)
+   Buffers: shared hit=13 read=3
+   ->  Sort  (cost=36.03..36.05 rows=8 width=59) (actual time=0.084..0.084 rows=10 loops=1)
+         Sort Key: bookings_partitioned.created_at DESC
+         Sort Method: quicksort  Memory: 26kB
+         Buffers: shared hit=13 read=3
+         ->  Bitmap Heap Scan on bookings_2026 bookings_partitioned  (cost=4.53..35.91 rows=8 width=59) (actual time=0.054..0.070 rows=10 loops=1)
+               Recheck Cond: ((user_id = 123) AND (created_at >= '2026-01-01 00:00:00+00'::timestamp with time zone) AND (created_at < '2027-01-01 00:00:00+00'::timestamp with time zone))
+               Heap Blocks: exact=10
+               Buffers: shared hit=10 read=3
+               ->  Bitmap Index Scan on bookings_2026_user_id_created_at_idx  (cost=0.00..4.52 rows=8 width=0) (actual time=0.040..0.040 rows=10 loops=1)
+                     Index Cond: ((user_id = 123) AND (created_at >= '2026-01-01 00:00:00+00'::timestamp with time zone) AND (created_at < '2027-01-01 00:00:00+00'::timestamp with time zone))
+                     Buffers: shared read=3
+ Planning:
+   Buffers: shared hit=31
+ Planning Time: 0.127 ms
+ Execution Time: 0.099 ms
+(17 rows)
+
+Time: 0.852 ms
+Service partitioned bookings: aggregation
+                                                                                        QUERY PLAN                                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=73797.98..73798.03 rows=20 width=48) (actual time=148.767..150.539 rows=20 loops=1)
+   Buffers: shared hit=7965, temp read=3152 written=4209
+   ->  Sort  (cost=73797.98..74026.64 rows=91465 width=48) (actual time=148.766..150.537 rows=20 loops=1)
+         Sort Key: (sum(bookings_partitioned.total)) DESC
+         Sort Method: top-N heapsort  Memory: 27kB
+         Buffers: shared hit=7965, temp read=3152 written=4209
+         ->  Finalize GroupAggregate  (cost=47048.19..71364.13 rows=91465 width=48) (actual time=84.304..144.595 rows=99893 loops=1)
+               Group Key: bookings_partitioned.event_id
+               Buffers: shared hit=7962, temp read=3152 written=4209
+               ->  Gather Merge  (cost=47048.19..68391.52 rows=182930 width=48) (actual time=84.296..108.658 rows=270831 loops=1)
+                     Workers Planned: 2
+                     Workers Launched: 2
+                     Buffers: shared hit=7962, temp read=3152 written=4209
+                     ->  Sort  (cost=46048.17..46276.83 rows=91465 width=48) (actual time=82.393..86.306 rows=90277 loops=3)
+                           Sort Key: bookings_partitioned.event_id
+                           Sort Method: external merge  Disk: 4880kB
+                           Buffers: shared hit=7962, temp read=3152 written=4209
+                           Worker 0:  Sort Method: external merge  Disk: 4816kB
+                           Worker 1:  Sort Method: external merge  Disk: 4840kB
+                           ->  Partial HashAggregate  (cost=31708.58..35697.03 rows=91465 width=48) (actual time=47.100..67.629 rows=90277 loops=3)
+                                 Group Key: bookings_partitioned.event_id
+                                 Planned Partitions: 4  Batches: 5  Memory Usage: 8241kB  Disk Usage: 3792kB
+                                 Buffers: shared hit=7946, temp read=1335 written=2389
+                                 Worker 0:  Batches: 5  Memory Usage: 8241kB  Disk Usage: 3736kB
+                                 Worker 1:  Batches: 5  Memory Usage: 8241kB  Disk Usage: 3752kB
+                                 ->  Parallel Seq Scan on bookings_2026 bookings_partitioned  (cost=0.00..12316.12 rows=291342 width=16) (actual time=0.005..14.286 rows=233073 loops=3)
+                                       Filter: ((created_at >= '2026-01-01 00:00:00+00'::timestamp with time zone) AND (created_at < '2027-01-01 00:00:00+00'::timestamp with time zone))
+                                       Buffers: shared hit=7946
+ Planning:
+   Buffers: shared hit=29 read=1
+ Planning Time: 0.114 ms
+ Execution Time: 151.268 ms
+(32 rows)
+
+Time: 152.105 ms

@@ -1,0 +1,136 @@
+Timing is on.
+ rows_count 
+------------
+    1000000
+(1 row)
+
+Time: 14.050 ms
+ table_size | total_size 
+------------+------------
+ 65 MB      | 87 MB
+(1 row)
+
+Time: 0.564 ms
+SELECT by user_id
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..14543.43 rows=11 width=36) (actual time=4.624..12.397 rows=7 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   Buffers: shared hit=8334
+   ->  Parallel Seq Scan on events  (cost=0.00..13542.33 rows=5 width=36) (actual time=2.950..10.084 rows=2 loops=3)
+         Filter: (user_id = 123)
+         Rows Removed by Filter: 333331
+         Buffers: shared hit=8334
+ Planning:
+   Buffers: shared hit=18
+ Planning Time: 0.056 ms
+ Execution Time: 12.403 ms
+(12 rows)
+
+Time: 13.005 ms
+SELECT by created_at range: 1 day
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..16888.67 rows=2630 width=36) (actual time=0.080..28.854 rows=2712 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   Buffers: shared hit=8334
+   ->  Parallel Seq Scan on events  (cost=0.00..15625.67 rows=1096 width=36) (actual time=0.021..26.536 rows=904 loops=3)
+         Filter: (created_at >= (now() - '1 day'::interval))
+         Rows Removed by Filter: 332429
+         Buffers: shared hit=8334
+ Planning:
+   Buffers: shared hit=7
+ Planning Time: 0.051 ms
+ Execution Time: 28.937 ms
+(12 rows)
+
+Time: 29.574 ms
+Filter + sort + limit
+                                                           QUERY PLAN                                                           
+--------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=14542.42..14543.58 rows=10 width=36) (actual time=10.025..11.217 rows=7 loops=1)
+   Buffers: shared hit=8406
+   ->  Gather Merge  (cost=14542.42..14543.58 rows=10 width=36) (actual time=10.024..11.216 rows=7 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=8406
+         ->  Sort  (cost=13542.39..13542.40 rows=5 width=36) (actual time=9.065..9.065 rows=2 loops=3)
+               Sort Key: created_at DESC
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=8406
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Parallel Seq Scan on events  (cost=0.00..13542.33 rows=5 width=36) (actual time=2.807..9.023 rows=2 loops=3)
+                     Filter: (user_id = 123)
+                     Rows Removed by Filter: 333331
+                     Buffers: shared hit=8334
+ Planning:
+   Buffers: shared hit=20
+ Planning Time: 0.061 ms
+ Execution Time: 11.237 ms
+(20 rows)
+
+Time: 12.000 ms
+Aggregation: last 30 days grouped by event_type
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize GroupAggregate  (cost=16793.58..16794.59 rows=4 width=15) (actual time=28.777..30.178 rows=4 loops=1)
+   Group Key: event_type
+   Buffers: shared hit=8350
+   ->  Gather Merge  (cost=16793.58..16794.51 rows=8 width=15) (actual time=28.774..30.174 rows=12 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=8350
+         ->  Sort  (cost=15793.55..15793.56 rows=4 width=15) (actual time=27.816..27.817 rows=4 loops=3)
+               Sort Key: event_type
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=8350
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Partial HashAggregate  (cost=15793.47..15793.51 rows=4 width=15) (actual time=27.799..27.800 rows=4 loops=3)
+                     Group Key: event_type
+                     Batches: 1  Memory Usage: 24kB
+                     Buffers: shared hit=8334
+                     Worker 0:  Batches: 1  Memory Usage: 24kB
+                     Worker 1:  Batches: 1  Memory Usage: 24kB
+                     ->  Parallel Seq Scan on events  (cost=0.00..15625.67 rows=33561 width=7) (actual time=0.005..25.795 rows=27184 loops=3)
+                           Filter: (created_at >= (now() - '30 days'::interval))
+                           Rows Removed by Filter: 306149
+                           Buffers: shared hit=8334
+ Planning:
+   Buffers: shared hit=13
+ Planning Time: 0.049 ms
+ Execution Time: 30.213 ms
+(27 rows)
+
+Time: 30.970 ms
+Aggregation: 365 days grouped by date
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=84578.12..104888.59 rows=999900 width=12) (actual time=184.344..184.605 rows=366 loops=1)
+   Group Key: date(created_at)
+   Planned Partitions: 16  Batches: 1  Memory Usage: 3121kB
+   Buffers: shared hit=8334
+   ->  Seq Scan on events  (cost=0.00..28333.75 rows=999900 width=4) (actual time=6.372..128.177 rows=1000000 loops=1)
+         Filter: (created_at >= (now() - '365 days'::interval))
+         Buffers: shared hit=8334
+ Planning:
+   Buffers: shared hit=11
+ Planning Time: 0.045 ms
+ JIT:
+   Functions: 8
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 0.304 ms (Deform 0.096 ms), Inlining 0.000 ms, Optimization 0.798 ms, Emission 5.578 ms, Total 6.681 ms
+ Execution Time: 204.016 ms
+(15 rows)
+
+Time: 204.789 ms
+Index sizes
+ indexrelname | index_size 
+--------------+------------
+ events_pkey  | 21 MB
+(1 row)
+
+Time: 2.083 ms

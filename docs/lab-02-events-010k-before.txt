@@ -1,0 +1,103 @@
+Timing is on.
+ rows_count 
+------------
+      10000
+(1 row)
+
+Time: 1.713 ms
+ table_size | total_size 
+------------+------------
+ 672 kB     | 944 kB
+(1 row)
+
+Time: 1.539 ms
+SELECT by user_id
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Seq Scan on events  (cost=0.00..209.00 rows=1 width=36) (actual time=0.227..0.227 rows=0 loops=1)
+   Filter: (user_id = 123)
+   Rows Removed by Filter: 10000
+   Buffers: shared hit=84
+ Planning:
+   Buffers: shared hit=18
+ Planning Time: 0.075 ms
+ Execution Time: 0.232 ms
+(8 rows)
+
+Time: 0.772 ms
+SELECT by created_at range: 1 day
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Seq Scan on events  (cost=0.00..259.00 rows=27 width=36) (actual time=0.015..0.718 rows=32 loops=1)
+   Filter: (created_at >= (now() - '1 day'::interval))
+   Rows Removed by Filter: 9968
+   Buffers: shared hit=84
+ Planning:
+   Buffers: shared hit=7
+ Planning Time: 0.083 ms
+ Execution Time: 0.723 ms
+(8 rows)
+
+Time: 1.396 ms
+Filter + sort + limit
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Limit  (cost=209.01..209.01 rows=1 width=36) (actual time=0.333..0.334 rows=0 loops=1)
+   Buffers: shared hit=87
+   ->  Sort  (cost=209.01..209.01 rows=1 width=36) (actual time=0.333..0.333 rows=0 loops=1)
+         Sort Key: created_at DESC
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=87
+         ->  Seq Scan on events  (cost=0.00..209.00 rows=1 width=36) (actual time=0.317..0.318 rows=0 loops=1)
+               Filter: (user_id = 123)
+               Rows Removed by Filter: 10000
+               Buffers: shared hit=84
+ Planning:
+   Buffers: shared hit=20
+ Planning Time: 0.065 ms
+ Execution Time: 0.371 ms
+(14 rows)
+
+Time: 1.210 ms
+Aggregation: last 30 days grouped by event_type
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=263.28..263.32 rows=4 width=15) (actual time=1.880..1.881 rows=4 loops=1)
+   Group Key: event_type
+   Batches: 1  Memory Usage: 24kB
+   Buffers: shared hit=84
+   ->  Seq Scan on events  (cost=0.00..259.00 rows=856 width=7) (actual time=0.005..1.773 rows=849 loops=1)
+         Filter: (created_at >= (now() - '30 days'::interval))
+         Rows Removed by Filter: 9151
+         Buffers: shared hit=84
+ Planning:
+   Buffers: shared hit=13
+ Planning Time: 0.063 ms
+ Execution Time: 1.904 ms
+(12 rows)
+
+Time: 2.889 ms
+Aggregation: 365 days grouped by date
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=333.99..458.98 rows=9999 width=12) (actual time=3.066..3.119 rows=366 loops=1)
+   Group Key: date(created_at)
+   Batches: 1  Memory Usage: 433kB
+   Buffers: shared hit=84
+   ->  Seq Scan on events  (cost=0.00..284.00 rows=9999 width=4) (actual time=0.012..2.037 rows=10000 loops=1)
+         Filter: (created_at >= (now() - '365 days'::interval))
+         Buffers: shared hit=84
+ Planning:
+   Buffers: shared hit=11
+ Planning Time: 0.139 ms
+ Execution Time: 3.294 ms
+(11 rows)
+
+Time: 4.832 ms
+Index sizes
+ indexrelname | index_size 
+--------------+------------
+ events_pkey  | 240 kB
+(1 row)
+
+Time: 2.608 ms

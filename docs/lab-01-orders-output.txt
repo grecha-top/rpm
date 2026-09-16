@@ -1,0 +1,602 @@
+Timing is on.
+Task 3: EXPLAIN without index
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Gather  (cost=1000.00..17036.43 rows=11 width=53)
+   Workers Planned: 2
+   ->  Parallel Seq Scan on orders  (cost=0.00..16035.33 rows=5 width=53)
+         Filter: (user_id = 123)
+(4 rows)
+
+Time: 1.757 ms
+Task 4: EXPLAIN ANALYZE without index
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..17036.43 rows=11 width=53) (actual time=18.230..37.834 rows=7 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   Buffers: shared hit=10827
+   ->  Parallel Seq Scan on orders  (cost=0.00..16035.33 rows=5 width=53) (actual time=12.010..30.072 rows=2 loops=3)
+         Filter: (user_id = 123)
+         Rows Removed by Filter: 333331
+         Buffers: shared hit=10827
+ Planning Time: 0.043 ms
+ Execution Time: 37.854 ms
+(10 rows)
+
+Time: 38.902 ms
+Task 5: Sequential Scan examples
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..20827.00 rows=1000000 width=53) (actual time=0.010..72.509 rows=1000000 loops=1)
+   Buffers: shared hit=10827
+ Planning Time: 0.057 ms
+ Execution Time: 110.313 ms
+(4 rows)
+
+Time: 111.365 ms
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..23327.00 rows=999900 width=53) (actual time=0.007..95.779 rows=999999 loops=1)
+   Filter: (amount > '0'::numeric)
+   Rows Removed by Filter: 1
+   Buffers: shared hit=10827
+ Planning:
+   Buffers: shared hit=7
+ Planning Time: 0.081 ms
+ Execution Time: 132.939 ms
+(8 rows)
+
+Time: 134.732 ms
+Task 6: B-tree index by user_id
+CREATE INDEX
+Time: 256.409 ms
+ANALYZE
+Time: 80.135 ms
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=4.51..47.60 rows=11 width=53) (actual time=0.058..0.072 rows=7 loops=1)
+   Recheck Cond: (user_id = 123)
+   Heap Blocks: exact=7
+   Buffers: shared hit=10 read=3
+   ->  Bitmap Index Scan on idx_orders_user_id  (cost=0.00..4.51 rows=11 width=0) (actual time=0.051..0.051 rows=7 loops=1)
+         Index Cond: (user_id = 123)
+         Buffers: shared hit=3 read=3
+ Planning:
+   Buffers: shared hit=33 read=1
+ Planning Time: 0.233 ms
+ Execution Time: 0.105 ms
+(11 rows)
+
+Time: 1.307 ms
+Task 7-8: low selectivity status index
+CREATE INDEX
+Time: 374.684 ms
+ANALYZE
+Time: 103.969 ms
+  status   | rows_count 
+-----------+------------
+ NEW       |     250728
+ CANCELLED |     250148
+ PAID      |     249737
+ DELIVERED |     249387
+(4 rows)
+
+Time: 61.073 ms
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=2778.04..16710.88 rows=248467 width=53) (actual time=6.404..40.781 rows=249737 loops=1)
+   Recheck Cond: ((status)::text = 'PAID'::text)
+   Heap Blocks: exact=10827
+   Buffers: shared hit=10827 read=213
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2715.93 rows=248467 width=0) (actual time=5.047..5.047 rows=249737 loops=1)
+         Index Cond: ((status)::text = 'PAID'::text)
+         Buffers: shared read=213
+ Planning:
+   Buffers: shared hit=20
+ Planning Time: 0.141 ms
+ Execution Time: 50.065 ms
+(11 rows)
+
+Time: 51.501 ms
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=2814.84..16787.68 rows=251667 width=53) (actual time=6.822..43.888 rows=250728 loops=1)
+   Recheck Cond: ((status)::text = 'NEW'::text)
+   Heap Blocks: exact=10827
+   Buffers: shared hit=10829 read=212
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2751.93 rows=251667 width=0) (actual time=5.303..5.303 rows=250728 loops=1)
+         Index Cond: ((status)::text = 'NEW'::text)
+         Buffers: shared hit=2 read=212
+ Planning Time: 0.075 ms
+ Execution Time: 53.638 ms
+(9 rows)
+
+Time: 54.750 ms
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=2802.83..16762.74 rows=250633 width=53) (actual time=7.804..49.972 rows=249387 loops=1)
+   Recheck Cond: ((status)::text = 'DELIVERED'::text)
+   Heap Blocks: exact=10827
+   Buffers: shared hit=10829 read=215
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2740.17 rows=250633 width=0) (actual time=6.004..6.004 rows=249387 loops=1)
+         Index Cond: ((status)::text = 'DELIVERED'::text)
+         Buffers: shared hit=2 read=215
+ Planning Time: 0.096 ms
+ Execution Time: 59.809 ms
+(9 rows)
+
+Time: 60.798 ms
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=2787.98..16730.39 rows=249233 width=53) (actual time=6.870..43.215 rows=250148 loops=1)
+   Recheck Cond: ((status)::text = 'CANCELLED'::text)
+   Heap Blocks: exact=10827
+   Buffers: shared hit=10829 read=214
+   ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2725.67 rows=249233 width=0) (actual time=5.388..5.388 rows=250148 loops=1)
+         Index Cond: ((status)::text = 'CANCELLED'::text)
+         Buffers: shared hit=2 read=214
+ Planning Time: 0.088 ms
+ Execution Time: 52.570 ms
+(9 rows)
+
+Time: 53.619 ms
+Task 9: range query by created_at
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..20138.57 rows=10199 width=53) (actual time=0.244..58.980 rows=9645 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   Buffers: shared hit=10827
+   ->  Parallel Seq Scan on orders  (cost=0.00..18118.67 rows=4250 width=53) (actual time=0.038..53.845 rows=3215 loops=3)
+         Filter: (created_at > (now() - '7 days'::interval))
+         Rows Removed by Filter: 330118
+         Buffers: shared hit=10827
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.124 ms
+ Execution Time: 59.410 ms
+(12 rows)
+
+Time: 60.757 ms
+CREATE INDEX
+Time: 282.672 ms
+ANALYZE
+Time: 84.332 ms
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=26.53..3725.60 rows=1303 width=53) (actual time=0.325..1.599 rows=1381 loops=1)
+   Recheck Cond: (created_at > (now() - '1 day'::interval))
+   Heap Blocks: exact=1302
+   Buffers: shared hit=1308 read=4
+   ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..26.20 rows=1303 width=0) (actual time=0.183..0.184 rows=1381 loops=1)
+         Index Cond: (created_at > (now() - '1 day'::interval))
+         Buffers: shared hit=6 read=4
+ Planning:
+   Buffers: shared hit=26 read=4
+ Planning Time: 0.261 ms
+ Execution Time: 1.683 ms
+(11 rows)
+
+Time: 2.798 ms
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=175.19..11185.59 rows=9130 width=53) (actual time=1.699..7.447 rows=9645 loops=1)
+   Recheck Cond: (created_at > (now() - '7 days'::interval))
+   Heap Blocks: exact=6389
+   Buffers: shared hit=6396 read=23
+   ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..172.91 rows=9130 width=0) (actual time=0.957..0.958 rows=9645 loops=1)
+         Index Cond: (created_at > (now() - '7 days'::interval))
+         Buffers: shared hit=7 read=23
+ Planning:
+   Buffers: shared hit=4
+ Planning Time: 0.077 ms
+ Execution Time: 7.902 ms
+(11 rows)
+
+Time: 9.061 ms
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=830.24..12429.06 rows=44104 width=53) (actual time=4.652..21.160 rows=41848 loops=1)
+   Recheck Cond: (created_at > (now() - '1 mon'::interval))
+   Heap Blocks: exact=10591
+   Buffers: shared hit=10621 read=88
+   ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..819.21 rows=44104 width=0) (actual time=3.114..3.114 rows=41848 loops=1)
+         Index Cond: (created_at > (now() - '1 mon'::interval))
+         Buffers: shared hit=30 read=88
+ Planning Time: 0.111 ms
+ Execution Time: 23.093 ms
+(9 rows)
+
+Time: 24.368 ms
+                                                   QUERY PLAN                                                    
+-----------------------------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..28327.00 rows=497203 width=53) (actual time=0.012..170.690 rows=499920 loops=1)
+   Filter: (created_at > (now() - '1 year'::interval))
+   Rows Removed by Filter: 500080
+   Buffers: shared hit=10827
+ Planning Time: 0.139 ms
+ Execution Time: 190.196 ms
+(6 rows)
+
+Time: 191.305 ms
+Task 10: Bitmap Scan candidate
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Seq Scan on orders  (cost=0.00..25827.00 rows=204500 width=53) (actual time=0.008..93.337 rows=200297 loops=1)
+   Filter: ((amount >= '1000'::numeric) AND (amount <= '3000'::numeric))
+   Rows Removed by Filter: 799703
+   Buffers: shared hit=10827
+ Planning:
+   Buffers: shared hit=6
+ Planning Time: 0.201 ms
+ Execution Time: 101.007 ms
+(8 rows)
+
+Time: 102.812 ms
+CREATE INDEX
+Time: 355.178 ms
+ANALYZE
+Time: 110.893 ms
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=4234.81..18050.66 rows=199257 width=53) (actual time=18.410..56.522 rows=200297 loops=1)
+   Recheck Cond: ((amount >= '1000'::numeric) AND (amount <= '3000'::numeric))
+   Heap Blocks: exact=10827
+   Buffers: shared hit=10827 read=550 written=6
+   ->  Bitmap Index Scan on idx_orders_amount  (cost=0.00..4184.99 rows=199257 width=0) (actual time=16.994..16.995 rows=200297 loops=1)
+         Index Cond: ((amount >= '1000'::numeric) AND (amount <= '3000'::numeric))
+         Buffers: shared read=550 written=6
+ Planning:
+   Buffers: shared hit=25 read=1
+ Planning Time: 0.267 ms
+ Execution Time: 64.383 ms
+(11 rows)
+
+Time: 66.887 ms
+Task 11: multiple conditions with separate indexes
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=4.51..47.62 rows=3 width=53) (actual time=0.049..0.067 rows=2 loops=1)
+   Recheck Cond: (user_id = 123)
+   Filter: ((status)::text = 'PAID'::text)
+   Rows Removed by Filter: 5
+   Heap Blocks: exact=7
+   Buffers: shared hit=7 read=3
+   ->  Bitmap Index Scan on idx_orders_user_id  (cost=0.00..4.51 rows=11 width=0) (actual time=0.040..0.040 rows=7 loops=1)
+         Index Cond: (user_id = 123)
+         Buffers: shared read=3
+ Planning Time: 0.115 ms
+ Execution Time: 0.114 ms
+(11 rows)
+
+Time: 1.134 ms
+Task 12: composite index
+CREATE INDEX
+Time: 466.806 ms
+ANALYZE
+Time: 74.384 ms
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_orders_user_status on orders  (cost=0.42..16.48 rows=3 width=53) (actual time=0.020..0.023 rows=2 loops=1)
+   Index Cond: ((user_id = 123) AND ((status)::text = 'PAID'::text))
+   Buffers: shared hit=2 read=3
+ Planning:
+   Buffers: shared hit=23 read=1
+ Planning Time: 0.163 ms
+ Execution Time: 0.037 ms
+(7 rows)
+
+Time: 0.785 ms
+Task 13: column order in composite indexes
+CREATE INDEX
+Time: 379.427 ms
+CREATE INDEX
+Time: 329.464 ms
+ANALYZE
+Time: 79.622 ms
+                                                             QUERY PLAN                                                             
+------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=4.51..47.60 rows=11 width=53) (actual time=0.039..0.052 rows=7 loops=1)
+   Recheck Cond: (user_id = 123)
+   Heap Blocks: exact=7
+   Buffers: shared hit=7 read=3
+   ->  Bitmap Index Scan on idx_orders_user_created_at  (cost=0.00..4.51 rows=11 width=0) (actual time=0.032..0.032 rows=7 loops=1)
+         Index Cond: (user_id = 123)
+         Buffers: shared read=3
+ Planning:
+   Buffers: shared hit=23 read=2
+ Planning Time: 0.226 ms
+ Execution Time: 0.081 ms
+(11 rows)
+
+Time: 0.979 ms
+                                                             QUERY PLAN                                                             
+------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_orders_user_created_at on orders  (cost=0.43..8.45 rows=1 width=53) (actual time=0.030..0.030 rows=0 loops=1)
+   Index Cond: ((user_id = 123) AND (created_at > (now() - '30 days'::interval)))
+   Buffers: shared hit=3
+ Planning Time: 0.060 ms
+ Execution Time: 0.049 ms
+(5 rows)
+
+Time: 0.713 ms
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=777.51..12329.54 rows=41430 width=53) (actual time=4.316..17.540 rows=41848 loops=1)
+   Recheck Cond: (created_at > (now() - '30 days'::interval))
+   Heap Blocks: exact=10591
+   Buffers: shared hit=10709
+   ->  Bitmap Index Scan on idx_orders_created_at  (cost=0.00..767.15 rows=41430 width=0) (actual time=2.733..2.734 rows=41848 loops=1)
+         Index Cond: (created_at > (now() - '30 days'::interval))
+         Buffers: shared hit=118
+ Planning Time: 0.055 ms
+ Execution Time: 19.450 ms
+(9 rows)
+
+Time: 20.313 ms
+Task 14-15: WHERE + ORDER BY + LIMIT
+                                                                QUERY PLAN                                                                
+------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=47.79..47.81 rows=11 width=53) (actual time=0.035..0.036 rows=7 loops=1)
+   Sort Key: created_at DESC
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=10
+   ->  Bitmap Heap Scan on orders  (cost=4.51..47.60 rows=11 width=53) (actual time=0.017..0.025 rows=7 loops=1)
+         Recheck Cond: (user_id = 123)
+         Heap Blocks: exact=7
+         Buffers: shared hit=10
+         ->  Bitmap Index Scan on idx_orders_user_created_at  (cost=0.00..4.51 rows=11 width=0) (actual time=0.011..0.011 rows=7 loops=1)
+               Index Cond: (user_id = 123)
+               Buffers: shared hit=3
+ Planning:
+   Buffers: shared hit=17
+ Planning Time: 0.182 ms
+ Execution Time: 0.071 ms
+(15 rows)
+
+Time: 0.945 ms
+CREATE INDEX
+Time: 478.818 ms
+ANALYZE
+Time: 106.261 ms
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=47.79..47.81 rows=11 width=53) (actual time=0.056..0.057 rows=7 loops=1)
+   Sort Key: created_at DESC
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=7 read=3
+   ->  Bitmap Heap Scan on orders  (cost=4.51..47.60 rows=11 width=53) (actual time=0.035..0.046 rows=7 loops=1)
+         Recheck Cond: (user_id = 123)
+         Heap Blocks: exact=7
+         Buffers: shared hit=7 read=3
+         ->  Bitmap Index Scan on idx_orders_user_created_at_desc  (cost=0.00..4.51 rows=11 width=0) (actual time=0.027..0.028 rows=7 loops=1)
+               Index Cond: (user_id = 123)
+               Buffers: shared read=3
+ Planning:
+   Buffers: shared hit=25 read=1
+ Planning Time: 0.392 ms
+ Execution Time: 0.086 ms
+(15 rows)
+
+Time: 1.457 ms
+                                                                     QUERY PLAN                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=47.79..47.81 rows=11 width=53) (actual time=0.024..0.025 rows=7 loops=1)
+   Buffers: shared hit=10
+   ->  Sort  (cost=47.79..47.81 rows=11 width=53) (actual time=0.023..0.024 rows=7 loops=1)
+         Sort Key: created_at DESC
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=10
+         ->  Bitmap Heap Scan on orders  (cost=4.51..47.60 rows=11 width=53) (actual time=0.012..0.016 rows=7 loops=1)
+               Recheck Cond: (user_id = 123)
+               Heap Blocks: exact=7
+               Buffers: shared hit=10
+               ->  Bitmap Index Scan on idx_orders_user_created_at_desc  (cost=0.00..4.51 rows=11 width=0) (actual time=0.009..0.009 rows=7 loops=1)
+                     Index Cond: (user_id = 123)
+                     Buffers: shared hit=3
+ Planning Time: 0.069 ms
+ Execution Time: 0.051 ms
+(15 rows)
+
+Time: 0.734 ms
+Task 16: Index Only Scan and INCLUDE
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on orders  (cost=4.51..47.60 rows=11 width=16) (actual time=0.047..0.073 rows=7 loops=1)
+   Recheck Cond: (user_id = 123)
+   Heap Blocks: exact=7
+   Buffers: shared hit=10
+   ->  Bitmap Index Scan on idx_orders_user_created_at_desc  (cost=0.00..4.51 rows=11 width=0) (actual time=0.038..0.038 rows=7 loops=1)
+         Index Cond: (user_id = 123)
+         Buffers: shared hit=3
+ Planning Time: 0.066 ms
+ Execution Time: 0.109 ms
+(9 rows)
+
+Time: 0.796 ms
+CREATE INDEX
+Time: 548.288 ms
+VACUUM
+Time: 126.490 ms
+                                                                QUERY PLAN                                                                
+------------------------------------------------------------------------------------------------------------------------------------------
+ Index Only Scan using idx_orders_user_id_include on orders  (cost=0.42..4.62 rows=11 width=16) (actual time=0.025..0.027 rows=7 loops=1)
+   Index Cond: (user_id = 123)
+   Heap Fetches: 0
+   Buffers: shared hit=1 read=3
+ Planning:
+   Buffers: shared hit=12
+ Planning Time: 0.132 ms
+ Execution Time: 0.040 ms
+(8 rows)
+
+Time: 0.765 ms
+Task 17: partial index
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=47676.96..48301.46 rows=249800 width=53) (actual time=92.091..117.397 rows=250728 loops=1)
+   Sort Key: created_at
+   Sort Method: external merge  Disk: 16200kB
+   Buffers: shared hit=10830 read=211, temp read=2025 written=2030
+   ->  Bitmap Heap Scan on orders  (cost=2792.38..16741.88 rows=249800 width=53) (actual time=5.709..35.824 rows=250728 loops=1)
+         Recheck Cond: ((status)::text = 'NEW'::text)
+         Heap Blocks: exact=10827
+         Buffers: shared hit=10830 read=211
+         ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2729.93 rows=249800 width=0) (actual time=4.375..4.375 rows=250728 loops=1)
+               Index Cond: ((status)::text = 'NEW'::text)
+               Buffers: shared hit=3 read=211
+ Planning:
+   Buffers: shared hit=12
+ Planning Time: 0.095 ms
+ Execution Time: 127.599 ms
+(15 rows)
+
+Time: 128.722 ms
+CREATE INDEX
+Time: 91.822 ms
+ANALYZE
+Time: 80.682 ms
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=48294.29..48928.70 rows=253767 width=53) (actual time=120.017..148.324 rows=250728 loops=1)
+   Sort Key: created_at
+   Sort Method: external merge  Disk: 16200kB
+   Buffers: shared hit=11041, temp read=2025 written=2030
+   ->  Bitmap Heap Scan on orders  (cost=2839.12..16838.21 rows=253767 width=53) (actual time=5.693..47.942 rows=250728 loops=1)
+         Recheck Cond: ((status)::text = 'NEW'::text)
+         Heap Blocks: exact=10827
+         Buffers: shared hit=11041
+         ->  Bitmap Index Scan on idx_orders_status  (cost=0.00..2775.68 rows=253767 width=0) (actual time=4.187..4.187 rows=250728 loops=1)
+               Index Cond: ((status)::text = 'NEW'::text)
+               Buffers: shared hit=214
+ Planning:
+   Buffers: shared hit=29 read=1
+ Planning Time: 0.225 ms
+ Execution Time: 159.660 ms
+(15 rows)
+
+Time: 161.193 ms
+Task 18: expression index
+CREATE INDEX
+Time: 114.036 ms
+ANALYZE
+Time: 40.315 ms
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Seq Scan on lab_users  (cost=0.00..2236.00 rows=500 width=29) (actual time=2.845..24.288 rows=1 loops=1)
+   Filter: (lower((email)::text) = 'test@example.com'::text)
+   Rows Removed by Filter: 99999
+   Buffers: shared hit=736
+ Planning:
+   Buffers: shared hit=9 read=1
+ Planning Time: 0.083 ms
+ Execution Time: 24.301 ms
+(8 rows)
+
+Time: 25.373 ms
+CREATE INDEX
+Time: 177.431 ms
+ANALYZE
+Time: 159.540 ms
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_lab_users_lower_email on lab_users  (cost=0.42..8.44 rows=1 width=29) (actual time=0.018..0.019 rows=1 loops=1)
+   Index Cond: (lower((email)::text) = 'test@example.com'::text)
+   Buffers: shared hit=1 read=3
+ Planning:
+   Buffers: shared hit=11 read=1
+ Planning Time: 0.158 ms
+ Execution Time: 0.031 ms
+(7 rows)
+
+Time: 0.847 ms
+Task 19: insert cost without indexes
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Insert on orders_insert_no_indexes  (cost=0.00..5750.00 rows=0 width=0) (actual time=366.263..366.264 rows=0 loops=1)
+   Buffers: shared hit=401779 read=1 dirtied=1163 written=1175, temp read=171 written=171
+   ->  Subquery Scan on "*SELECT*"  (cost=0.00..5750.00 rows=100000 width=98) (actual time=10.026..187.392 rows=100000 loops=1)
+         Buffers: shared hit=100012 dirtied=1, temp read=171 written=171
+         ->  Function Scan on generate_series  (cost=0.00..4500.00 rows=100000 width=56) (actual time=9.622..61.138 rows=100000 loops=1)
+               Buffers: temp read=171 written=171
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.057 ms
+ Execution Time: 366.586 ms
+(10 rows)
+
+Time: 373.571 ms
+Task 19: insert cost with indexes
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Insert on orders_insert_with_indexes  (cost=0.00..5750.00 rows=0 width=0) (actual time=911.341..911.342 rows=0 loops=1)
+   Buffers: shared hit=1001044 read=5 dirtied=1871 written=2883, temp read=171 written=171
+   ->  Subquery Scan on "*SELECT*"  (cost=0.00..5750.00 rows=100000 width=98) (actual time=8.859..189.767 rows=100000 loops=1)
+         Buffers: shared hit=100010 read=1 dirtied=1, temp read=171 written=171
+         ->  Function Scan on generate_series  (cost=0.00..4500.00 rows=100000 width=56) (actual time=8.709..61.533 rows=100000 loops=1)
+               Buffers: temp read=171 written=171
+ Planning Time: 0.074 ms
+ Execution Time: 911.779 ms
+(8 rows)
+
+Time: 938.722 ms
+Task 20: index usage statistics
+ schemaname |          relname           |               indexrelname                | idx_scan 
+------------+----------------------------+-------------------------------------------+----------
+ public     | lab_users                  | idx_lab_users_email                       |        0
+ public     | lab_users                  | lab_users_pkey                            |        0
+ public     | orders                     | idx_orders_created_at_user                |        0
+ public     | orders                     | idx_orders_new                            |        0
+ public     | orders                     | orders_pkey                               |        0
+ public     | orders_insert_no_indexes   | orders_insert_no_indexes_pkey             |        0
+ public     | orders_insert_with_indexes | idx_orders_insert_with_indexes_created_at |        0
+ public     | orders_insert_with_indexes | idx_orders_insert_with_indexes_status     |        0
+ public     | orders_insert_with_indexes | idx_orders_insert_with_indexes_user_id    |        0
+ public     | orders_insert_with_indexes | orders_insert_with_indexes_pkey           |        0
+ public     | lab_users                  | idx_lab_users_lower_email                 |        1
+ public     | orders                     | idx_orders_amount                         |        1
+ public     | orders                     | idx_orders_user_id_include                |        1
+ public     | orders                     | idx_orders_user_status                    |        1
+ public     | orders                     | idx_orders_user_id                        |        2
+ public     | orders                     | idx_orders_user_created_at                |        3
+ public     | orders                     | idx_orders_user_created_at_desc           |        3
+ public     | orders                     | idx_orders_created_at                     |        6
+ public     | orders                     | idx_orders_status                         |        6
+(19 rows)
+
+Time: 4.554 ms
+Task 21: final optimization query before and after final composite index
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..8.45 rows=1 width=29) (actual time=0.016..0.016 rows=0 loops=1)
+   Buffers: shared hit=3
+   ->  Index Scan using idx_orders_user_created_at_desc on orders  (cost=0.43..8.45 rows=1 width=29) (actual time=0.015..0.015 rows=0 loops=1)
+         Index Cond: ((user_id = 123) AND (created_at >= (now() - '30 days'::interval)))
+         Filter: ((status)::text = 'PAID'::text)
+         Buffers: shared hit=3
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.154 ms
+ Execution Time: 0.037 ms
+(10 rows)
+
+Time: 1.808 ms
+CREATE INDEX
+Time: 624.914 ms
+ANALYZE
+Time: 93.282 ms
+                                                                      QUERY PLAN                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..8.45 rows=1 width=29) (actual time=0.041..0.041 rows=0 loops=1)
+   Buffers: shared read=3
+   ->  Index Scan using idx_orders_user_status_created_at_desc on orders  (cost=0.43..8.45 rows=1 width=29) (actual time=0.039..0.039 rows=0 loops=1)
+         Index Cond: ((user_id = 123) AND ((status)::text = 'PAID'::text) AND (created_at >= (now() - '30 days'::interval)))
+         Buffers: shared read=3
+ Planning:
+   Buffers: shared hit=23 read=2
+ Planning Time: 0.367 ms
+ Execution Time: 0.058 ms
+(9 rows)
+
+Time: 1.373 ms

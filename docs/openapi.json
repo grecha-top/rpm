@@ -1,0 +1,65 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Event Booking API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": { "description": "Application and database are available" }
+        }
+      }
+    },
+    "/api/bookings": {
+      "get": {
+        "summary": "List bookings with pagination, filtering and sorting",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "user_id", "in": "query", "schema": { "type": "integer" } },
+          { "name": "event_id", "in": "query", "schema": { "type": "integer" } },
+          { "name": "from", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "to", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["created_at", "-created_at"] } }
+        ],
+        "responses": {
+          "200": { "description": "Bookings" }
+        }
+      },
+      "post": {
+        "summary": "Create booking",
+        "responses": {
+          "201": { "description": "Booking created" }
+        }
+      }
+    },
+    "/api/users/{id}/bookings": {
+      "get": {
+        "summary": "JOIN query: user bookings with event and venue details",
+        "responses": {
+          "200": { "description": "Detailed bookings" }
+        }
+      }
+    },
+    "/api/categories/{id}/events": {
+      "get": {
+        "summary": "JOIN query: events by category with venue, categories and booking count",
+        "responses": {
+          "200": { "description": "Event summaries" }
+        }
+      }
+    },
+    "/api/events/{id}/stats": {
+      "get": {
+        "summary": "Aggregation query: booking stats by event",
+        "responses": {
+          "200": { "description": "Event stats" }
+        }
+      }
+    }
+  }
+}
