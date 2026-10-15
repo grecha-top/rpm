@@ -34,3 +34,14 @@ class OrderRepository:
         user.balance = new_balance
         self.db.add(user)
         self.db.commit()
+
+    def get_order(self, order_id: int):
+        return self.db.query(Order).filter(Order.id == order_id).first()
+
+    def save_order_entity(self, order) -> None:
+        self.db.add(order)
+        self.db.commit()
+        self.db.refresh(order)
+
+    def get_all_orders(self):
+        return self.db.query(Order).order_by(Order.id.desc()).all()

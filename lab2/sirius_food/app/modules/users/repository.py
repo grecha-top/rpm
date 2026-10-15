@@ -5,7 +5,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import User
+from app.models import Role, User
 
 
 class UserRepository:
@@ -20,12 +20,23 @@ class UserRepository:
     def get_by_email(self, email: str):
         return self.db.query(User).filter(User.email == email).first()
 
-    def create_user(self, email: str, phone: Optional[str]) -> User:
+    def get_role_by_name(self, name: str):
+        return self.db.query(Role).filter(Role.name == name).first()
+
+    def create_user(
+        self,
+        email: str,
+        phone: Optional[str],
+        password_hash: str,
+        role_id: int,
+    ) -> User:
         new_user = User(
             email=email,
             phone=phone,
             balance=0.0,
             is_blocked=False,
+            password_hash=password_hash,
+            role_id=role_id,
         )
         self.db.add(new_user)
         self.db.commit()

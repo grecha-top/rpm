@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.core.dependencies import get_current_user
 from app.modules.users.repository import UserRepository
 from app.modules.users.service import UserService
 from app.schemas import UserCreate
@@ -23,7 +24,11 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
     service = UserService(UserRepository(db))
 
     try:
-        new_user = service.register_user(email=payload.email, phone=payload.phone)
+        new_user = service.register_user(
+            email=payload.email,
+            password=payload.password,
+            phone=payload.phone,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -35,7 +40,14 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/{user_id}/topup")
-def top_up_balance(user_id: int, amount: float, db: Session = Depends(get_db)):
+def top_up_balance(
+    user_id: int,
+    amount: float,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
     if amount <= 0:
         raise HTTPException(
             status_code=400,

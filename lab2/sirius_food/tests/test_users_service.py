@@ -12,6 +12,7 @@ class FakeUserRepository:
         self.users_by_email = {}
         self.next_id = 1
         self.saved_user = None
+        self.student_role = SimpleNamespace(id=1, name="student")
 
     def get_by_id(self, user_id: int):
         return self.users_by_id.get(user_id)
@@ -19,13 +20,18 @@ class FakeUserRepository:
     def get_by_email(self, email: str):
         return self.users_by_email.get(email)
 
-    def create_user(self, email: str, phone: Optional[str]):
+    def get_role_by_name(self, name: str):
+        return self.student_role if name == "student" else None
+
+    def create_user(self, email: str, phone: Optional[str], password_hash: str, role_id: int):
         user = SimpleNamespace(
             id=self.next_id,
             email=email,
             phone=phone,
             balance=0.0,
             is_blocked=False,
+            password_hash=password_hash,
+            role_id=role_id,
         )
         self.next_id += 1
         self.users_by_id[user.id] = user
@@ -40,7 +46,7 @@ def test_register_user_creates_user_without_database():
     repository = FakeUserRepository()
     service = UserService(repository)
 
-    user = service.register_user("student@example.com", "+79991234567")
+    user = service.register_user("student@example.com", "strong-pass", "+79991234567")
 
     assert user.id == 1
     assert user.email == "student@example.com"

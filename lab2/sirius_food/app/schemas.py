@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr
 
 class UserCreate(BaseModel):
     email: EmailStr
+    password: str
     phone: Optional[str] = None
 
 
@@ -23,16 +24,17 @@ class UserResponse(BaseModel):
 class MenuItemCreate(BaseModel):
     name: str
     price: float
+    category_id: Optional[int] = None
 
 
 class MenuItemUpdate(BaseModel):
     name: Optional[str] = None
     price: Optional[float] = None
     is_available: Optional[bool] = None
+    category_id: Optional[int] = None
 
 
 class OrderCreate(BaseModel):
-    user_id: int
     item_id: int
     quantity: int
 
@@ -40,3 +42,12 @@ class OrderCreate(BaseModel):
 class DeliveryAssign(BaseModel):
     order_id: int
     courier_id: int
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str

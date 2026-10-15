@@ -4,6 +4,14 @@
 from typing import Protocol
 
 
+class OrderNotFoundError(Exception):
+    pass
+
+
+class AccessDeniedError(Exception):
+    pass
+
+
 class OrderRepositoryProtocol(Protocol):
     def get_user_by_id(self, user_id: int):
         ...
@@ -15,6 +23,15 @@ class OrderRepositoryProtocol(Protocol):
         ...
 
     def save_order(self, user_id: int, item_id: int, quantity: int) -> int:
+        ...
+
+    def get_order(self, order_id: int):
+        ...
+
+    def save_order_entity(self, order) -> None:
+        ...
+
+    def get_all_orders(self):
         ...
 
 
@@ -43,3 +60,17 @@ class OrderService:
         new_balance = user.balance - total_cost
         self.repository.update_user_balance(user, new_balance)
         return self.repository.save_order(user_id, item_id, quantity)
+
+    def cancel_order(self, order_id: int, current_user) -> None:
+        order = self.repository.get_order(order_id)
+        if not order:
+            raise OrderNotFoundError()
+        if order.user_id != current_user.id:
+            raise AccessDeniedError()
+        if order.status in {"cancelled", "delivered"}:
+            raise ValueError("Заказ нельзя отменить в текущем статусе")
+        order.status = "cancelled"
+        self.repository.save_order_entity(order)
+
+    def get_kitchen_orders(self):
+        return self.repository.get_all_orders()
