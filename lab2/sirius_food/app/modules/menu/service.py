@@ -40,6 +40,12 @@ class MenuService:
     def get_items(self):
         return self.repository.get_all()
 
+    def get_item(self, item_id: int):
+        item = self.repository.get_by_id(item_id)
+        if not item:
+            raise MenuItemNotFoundError()
+        return item
+
     def get_category(self, category_id: int):
         return self.repository.get_by_category(category_id)
 

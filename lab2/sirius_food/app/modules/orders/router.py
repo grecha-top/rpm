@@ -8,6 +8,7 @@ from app.models import User
 from app.modules.orders.repository import OrderRepository
 from app.modules.orders.service import (
     AccessDeniedError,
+    OrderAlreadyPaidError,
     OrderNotFoundError,
     OrderService,
 )
@@ -35,6 +36,25 @@ def create_order(
         status_code = 404 if str(exc) in {"Пользователь не найден", "Блюдо не найдено"} else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return {"status": "success", "order_id": order_id}
+
+
+@router.post("/{order_id}/pay")
+def pay_order(
+    order_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        order = OrderService(OrderRepository(db)).pay_order(order_id, current_user)
+    except OrderNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Заказ не найден") from exc
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=403, detail="Access denied") from exc
+    except OrderAlreadyPaidError as exc:
+        raise HTTPException(status_code=409, detail="Заказ уже оплачен") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "success", "order_id": order.id, "order_status": order.status}
 
 
 @router.post("/{order_id}/cancel")

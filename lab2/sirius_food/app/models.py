@@ -63,6 +63,7 @@ class Order(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     item_id = Column(Integer, ForeignKey("menu_items.id"))
     quantity = Column(Integer, nullable=False)
+    total = Column(Float, nullable=False, default=0.0)
     status = Column(String, default="processing")
 
     user = relationship("User")

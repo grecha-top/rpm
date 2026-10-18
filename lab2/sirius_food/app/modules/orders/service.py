@@ -12,6 +12,10 @@ class AccessDeniedError(Exception):
     pass
 
 
+class OrderAlreadyPaidError(Exception):
+    pass
+
+
 class OrderRepositoryProtocol(Protocol):
     def get_user_by_id(self, user_id: int):
         ...
@@ -19,16 +23,16 @@ class OrderRepositoryProtocol(Protocol):
     def get_menu_item_by_id(self, item_id: int):
         ...
 
-    def update_user_balance(self, user, new_balance: float) -> None:
-        ...
-
-    def save_order(self, user_id: int, item_id: int, quantity: int) -> int:
+    def save_order(self, user_id: int, item_id: int, quantity: int, total: float) -> int:
         ...
 
     def get_order(self, order_id: int):
         ...
 
     def save_order_entity(self, order) -> None:
+        ...
+
+    def pay_order(self, order, user, new_balance: float) -> None:
         ...
 
     def get_all_orders(self):
@@ -57,9 +61,27 @@ class OrderService:
         if user.balance < total_cost:
             raise ValueError("Недостаточно средств на балансе студента")
 
-        new_balance = user.balance - total_cost
-        self.repository.update_user_balance(user, new_balance)
-        return self.repository.save_order(user_id, item_id, quantity)
+        return self.repository.save_order(user_id, item_id, quantity, total_cost)
+
+    def pay_order(self, order_id: int, current_user):
+        order = self.repository.get_order(order_id)
+        if not order:
+            raise OrderNotFoundError()
+        if order.user_id != current_user.id:
+            raise AccessDeniedError()
+        if order.status == "paid":
+            raise OrderAlreadyPaidError()
+        if order.status != "processing":
+            raise ValueError("Заказ нельзя оплатить в текущем статусе")
+        if current_user.balance < order.total:
+            raise ValueError("Недостаточно средств на балансе студента")
+
+        self.repository.pay_order(
+            order,
+            current_user,
+            new_balance=current_user.balance - order.total,
+        )
+        return order
 
     def cancel_order(self, order_id: int, current_user) -> None:
         order = self.repository.get_order(order_id)

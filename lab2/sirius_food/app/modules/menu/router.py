@@ -33,6 +33,15 @@ def get_menu_items(db: Session = Depends(get_db)):
     return [_as_dict(item) for item in items]
 
 
+@router.get("/items/{item_id}")
+def get_menu_item(item_id: int, db: Session = Depends(get_db)):
+    try:
+        item = MenuService(MenuRepository(db)).get_item(item_id)
+    except MenuItemNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Блюдо не найдено") from exc
+    return _as_dict(item)
+
+
 @router.get("/categories/{category_id}")
 def get_category_items(category_id: int, db: Session = Depends(get_db)):
     items = MenuService(MenuRepository(db)).get_category(category_id)

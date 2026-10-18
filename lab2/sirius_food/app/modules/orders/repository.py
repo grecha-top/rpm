@@ -18,11 +18,12 @@ class OrderRepository:
     def get_menu_item_by_id(self, item_id: int):
         return self.db.query(MenuItem).filter(MenuItem.id == item_id).first()
 
-    def save_order(self, user_id: int, item_id: int, quantity: int) -> int:
+    def save_order(self, user_id: int, item_id: int, quantity: int, total: float) -> int:
         new_order = Order(
             user_id=user_id,
             item_id=item_id,
             quantity=quantity,
+            total=total,
             status="processing",
         )
         self.db.add(new_order)
@@ -30,16 +31,18 @@ class OrderRepository:
         self.db.refresh(new_order)
         return new_order.id
 
-    def update_user_balance(self, user, new_balance: float) -> None:
-        user.balance = new_balance
-        self.db.add(user)
-        self.db.commit()
-
     def get_order(self, order_id: int):
         return self.db.query(Order).filter(Order.id == order_id).first()
 
     def save_order_entity(self, order) -> None:
         self.db.add(order)
+        self.db.commit()
+        self.db.refresh(order)
+
+    def pay_order(self, order, user, new_balance: float) -> None:
+        user.balance = new_balance
+        order.status = "paid"
+        self.db.add_all([user, order])
         self.db.commit()
         self.db.refresh(order)
 
