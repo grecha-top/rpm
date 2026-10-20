@@ -13,6 +13,7 @@ from app.modules.orders.service import (
     OrderService,
 )
 from app.schemas import OrderCreate
+from app.tasks.dispatcher import CeleryOrderTaskDispatcher
 
 
 router = APIRouter()
@@ -27,7 +28,10 @@ def create_order(
     if payload.quantity <= 0:
         raise HTTPException(status_code=400, detail="Количество должно быть больше нуля")
     try:
-        order_id = OrderService(OrderRepository(db)).create_order(
+        order_id = OrderService(
+            OrderRepository(db),
+            CeleryOrderTaskDispatcher(),
+        ).create_order(
             user_id=current_user.id,
             item_id=payload.item_id,
             quantity=payload.quantity,

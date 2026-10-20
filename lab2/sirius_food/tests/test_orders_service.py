@@ -11,7 +11,12 @@ from app.modules.orders.service import (
 
 class FakeOrderRepository:
     def __init__(self):
-        self.user = SimpleNamespace(id=1, balance=1000.0)
+        self.user = SimpleNamespace(
+            id=1,
+            email="student@example.com",
+            phone="+79991234567",
+            balance=1000.0,
+        )
         self.item = SimpleNamespace(id=2, price=150.0, is_available=True)
         self.order = None
         self.next_id = 1
@@ -48,6 +53,16 @@ def test_create_order_persists_total_without_charging_user():
     assert order_id == 1
     assert repository.order.total == 450.0
     assert repository.user.balance == 1000.0
+
+
+def test_create_order_dispatches_background_effects():
+    repository = FakeOrderRepository()
+    dispatcher = SimpleNamespace(calls=[])
+    dispatcher.dispatch_order_created = lambda *args: dispatcher.calls.append(args)
+
+    OrderService(repository, dispatcher).create_order(1, 2, 1)
+
+    assert dispatcher.calls == [(1, "student@example.com", "+79991234567")]
 
 
 def test_pay_order_charges_balance_and_changes_status():

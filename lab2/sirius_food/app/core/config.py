@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_DAYS: int = 7
     MENU_CACHE_TTL: int = 300
     CATEGORY_CACHE_TTL: int = 600
+    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
+    CELERY_TASKS_SYNC: bool = False
+    ORDER_TASK_IDEMPOTENCY_TTL: int = 86400
+    RABBITMQ_URL: str = "amqp://sirius:sirius@localhost:5672/"
+    DELIVERY_GRPC_URL: str = "localhost:50051"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

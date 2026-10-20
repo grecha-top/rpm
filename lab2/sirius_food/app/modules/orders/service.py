@@ -39,11 +39,21 @@ class OrderRepositoryProtocol(Protocol):
         ...
 
 
+class OrderTaskDispatcherProtocol(Protocol):
+    def dispatch_order_created(self, order_id: int, email: str, phone: str) -> None:
+        ...
+
+
 class OrderService:
     """Инкапсулирует бизнес-правила оформления заказов."""
 
-    def __init__(self, repository: OrderRepositoryProtocol):
+    def __init__(
+        self,
+        repository: OrderRepositoryProtocol,
+        task_dispatcher: OrderTaskDispatcherProtocol = None,
+    ):
         self.repository = repository
+        self.task_dispatcher = task_dispatcher
 
     def create_order(self, user_id: int, item_id: int, quantity: int) -> int:
         user = self.repository.get_user_by_id(user_id)
@@ -61,7 +71,14 @@ class OrderService:
         if user.balance < total_cost:
             raise ValueError("Недостаточно средств на балансе студента")
 
-        return self.repository.save_order(user_id, item_id, quantity, total_cost)
+        order_id = self.repository.save_order(user_id, item_id, quantity, total_cost)
+        if self.task_dispatcher:
+            self.task_dispatcher.dispatch_order_created(
+                order_id,
+                user.email,
+                user.phone or "",
+            )
+        return order_id
 
     def pay_order(self, order_id: int, current_user):
         order = self.repository.get_order(order_id)

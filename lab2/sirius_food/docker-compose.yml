@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:15
@@ -8,14 +6,72 @@ services:
       POSTGRES_PASSWORD: sirius
       POSTGRES_DB: sirius_food
     ports:
-      - "5432:5432"
+      - "1432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sirius -d sirius_food"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    environment: &app_environment
+      DATABASE_URL: postgresql://sirius:sirius@db:5432/sirius_food
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      RABBITMQ_URL: amqp://sirius:sirius@rabbitmq:5672/
+      DELIVERY_GRPC_URL: delivery-grpc:50051
+      DEBUG: "true"
+      ALLOWED_ORIGINS: '["http://localhost:3000"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    build: .
+    command: celery -A app.core.celery_app:celery_app worker --loglevel=info --queues=default
+    environment: *app_environment
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    build: .
+    command: celery -A app.core.celery_app:celery_app beat --loglevel=info
+    environment: *app_environment
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  flower:
+    build: .
+    command: celery -A app.core.celery_app:celery_app flower --port=5555
+    environment: *app_environment
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
 
 volumes:
   pg_data:
