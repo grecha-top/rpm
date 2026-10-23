@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package delivery;
+
+service DeliveryService {
+  rpc AssignCourier(AssignCourierRequest) returns (AssignCourierResponse);
+  rpc CompleteDelivery(CompleteDeliveryRequest) returns (CompleteDeliveryResponse);
+  rpc GetDelivery(GetDeliveryRequest) returns (GetDeliveryResponse);
+  rpc ListCourierDeliveries(ListCourierDeliveriesRequest) returns (ListCourierDeliveriesResponse);
+  rpc TrackDelivery(TrackDeliveryRequest) returns (stream DeliveryStatus);
+  rpc ChatWithCourier(stream ChatMessage) returns (stream ChatMessage);
+}
+
+message AssignCourierRequest {
+  int32 order_id = 1;
+  int32 courier_id = 2;
+}
+
+message AssignCourierResponse {
+  int32 delivery_id = 1;
+  string status = 2;
+}
+
+message CompleteDeliveryRequest {
+  int32 delivery_id = 1;
+  int32 actor_id = 2;
+  bool actor_is_admin = 3;
+}
+
+message CompleteDeliveryResponse {
+  string status = 1;
+}
+
+message GetDeliveryRequest {
+  int32 order_id = 1;
+}
+
+message GetDeliveryResponse {
+  int32 id = 1;
+  int32 order_id = 2;
+  string status = 3;
+  int32 courier_id = 4;
+}
+
+message ListCourierDeliveriesRequest {
+  int32 courier_id = 1;
+  bool include_all = 2;
+}
+
+message DeliveryRecord {
+  int32 id = 1;
+  int32 order_id = 2;
+  string status = 3;
+  int32 courier_id = 4;
+}
+
+message ListCourierDeliveriesResponse {
+  repeated DeliveryRecord deliveries = 1;
+}
+
+message TrackDeliveryRequest {
+  int32 order_id = 1;
+}
+
+message DeliveryStatus {
+  int32 delivery_id = 1;
+  string status = 2;
+  string occurred_at = 3;
+}
+
+message ChatMessage {
+  int32 delivery_id = 1;
+  int32 sender_id = 2;
+  string text = 3;
+  string sent_at = 4;
+}

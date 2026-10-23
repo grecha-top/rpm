@@ -44,6 +44,18 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      delivery-grpc:
+        condition: service_started
+
+  delivery-grpc:
+    build: .
+    command: python -m services.delivery.server
+    environment: *app_environment
+    ports:
+      - "50051:50051"
+    depends_on:
+      db:
+        condition: service_healthy
 
   celery-worker:
     build: .
