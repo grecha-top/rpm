@@ -3,6 +3,8 @@
 """
 from typing import Protocol
 
+from app.events.contracts import build_event
+
 
 class OrderNotFoundError(Exception):
     pass
@@ -32,7 +34,7 @@ class OrderRepositoryProtocol(Protocol):
     def save_order_entity(self, order) -> None:
         ...
 
-    def pay_order(self, order, user, new_balance: float) -> None:
+    def pay_order(self, order, user, new_balance: float, event: dict) -> None:
         ...
 
     def get_all_orders(self):
@@ -93,10 +95,19 @@ class OrderService:
         if current_user.balance < order.total:
             raise ValueError("Недостаточно средств на балансе студента")
 
+        event = build_event(
+            "OrderPaid",
+            {
+                "order_id": order.id,
+                "customer_id": order.user_id,
+                "amount": order.total,
+            },
+        )
         self.repository.pay_order(
             order,
             current_user,
             new_balance=current_user.balance - order.total,
+            event=event,
         )
         return order
 

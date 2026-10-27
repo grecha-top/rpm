@@ -1,7 +1,8 @@
 """
 Определение ORM-моделей предметной области «Сириус.Еда».
 """
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -80,3 +81,32 @@ class Delivery(Base):
 
     order = relationship("Order")
     courier = relationship("User")
+
+
+class KitchenOrder(Base):
+    __tablename__ = "kitchen_orders"
+
+    id = Column(Integer, primary_key=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, unique=True)
+    status = Column(String(50), nullable=False, default="pending")
+
+
+class ProcessedEvent(Base):
+    __tablename__ = "processed_events"
+
+    consumer_name = Column(String(100), primary_key=True)
+    event_id = Column(String(36), primary_key=True)
+    processed_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class OutboxEvent(Base):
+    __tablename__ = "outbox_events"
+
+    id = Column(String(36), primary_key=True)
+    event_type = Column(String(100), nullable=False)
+    routing_key = Column(String(100), nullable=False)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    last_error = Column(String, nullable=True)

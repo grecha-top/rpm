@@ -3,7 +3,7 @@
 """
 from sqlalchemy.orm import Session
 
-from app.models import MenuItem, Order, User
+from app.models import MenuItem, Order, OutboxEvent, User
 
 
 class OrderRepository:
@@ -39,10 +39,16 @@ class OrderRepository:
         self.db.commit()
         self.db.refresh(order)
 
-    def pay_order(self, order, user, new_balance: float) -> None:
+    def pay_order(self, order, user, new_balance: float, event: dict) -> None:
         user.balance = new_balance
         order.status = "paid"
-        self.db.add_all([user, order])
+        outbox = OutboxEvent(
+            id=event["event_id"],
+            event_type=event["event_type"],
+            routing_key="order.paid",
+            payload=event,
+        )
+        self.db.add_all([user, order, outbox])
         self.db.commit()
         self.db.refresh(order)
 

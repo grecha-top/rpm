@@ -41,9 +41,10 @@ class FakeOrderRepository:
     def get_order(self, order_id):
         return self.order if self.order and self.order.id == order_id else None
 
-    def pay_order(self, order, user, new_balance):
+    def pay_order(self, order, user, new_balance, event):
         user.balance = new_balance
         order.status = "paid"
+        self.payment_event = event
 
 
 def test_create_order_persists_total_without_charging_user():
@@ -74,6 +75,12 @@ def test_pay_order_charges_balance_and_changes_status():
 
     assert order.status == "paid"
     assert repository.user.balance == 700.0
+    assert repository.payment_event["event_type"] == "OrderPaid"
+    assert repository.payment_event["payload"] == {
+        "order_id": 1,
+        "customer_id": 1,
+        "amount": 300.0,
+    }
 
 
 def test_pay_order_rejects_foreign_and_repeated_payment():

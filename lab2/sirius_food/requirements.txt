@@ -17,3 +17,4 @@ celery[redis]==5.4.0
 flower==2.0.1
 grpcio==1.67.1
 grpcio-tools==1.67.1
+aio-pika==9.4.3
