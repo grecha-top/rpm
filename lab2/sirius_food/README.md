@@ -1,119 +1,179 @@
-# Sirius Food Labs 3 and 4
+# Сириус Еда backend
 
-Проект продолжает лабораторную работу № 2 и добавляет безопасность API и production-подход к кешированию меню.
+Учебный backend последовательно развивает Clean Architecture: JWT и RBAC, Redis Cache-Aside, фоновые задачи Celery, gRPC-микросервис доставки и событийное взаимодействие через RabbitMQ с Saga и Transactional Outbox.
 
-## Лабораторная работа № 3
-
-Реализовано:
-
-- bcrypt-хеширование паролей;
-- JWT access-токены на 15 минут;
-- refresh-токены на 7 дней с хранением хеша в PostgreSQL;
-- refresh token rotation: использованный refresh-токен отзывается, повторное использование сбрасывает сессию пользователя;
-- `get_current_user` для аутентификации запросов;
-- RBAC для ролей `student`, `cook`, `courier`, `admin`;
-- защита `orders`, `users`, `menu` и `delivery`;
-- удаление `user_id` из payload создания заказа: пользователь берётся из JWT;
-- IDOR-защита отмены заказа и завершения доставки в service/router boundary;
-- Redis rate limiting для `/auth/login`;
-- CORS из настроек и Swagger только при `DEBUG=true`;
-- четыре security-теста без PostgreSQL.
-
-Поток авторизации:
+## Архитектура
 
 ```text
-POST /auth/login
-    -> bcrypt verify
-    -> JWT access + refresh
-    -> Authorization: Bearer <access>
-    -> get_current_user
-    -> require_role (если нужен RBAC)
-    -> Service проверяет права на конкретный объект
+Next.js ──REST──> FastAPI ──────────────> PostgreSQL
+                    │                         │
+                    ├── Redis Cache-Aside     ├── outbox_events
+                    ├── Celery → Redis        └── processed_events
+                    │       ├── Worker
+                    │       ├── Beat
+                    │       └── Flower
+                    │
+                    ├──gRPC──> Delivery Service
+                    │
+                    └── Outbox Publisher → RabbitMQ topic exchange
+                                             ├── kitchen_queue
+                                             ├── delivery_queue
+                                             └── order_compensation_queue
 ```
 
-## Лабораторная работа № 4
+Celery использует Redis и отвечает за технические фоновые эффекты одного приложения. RabbitMQ переносит доменные события между независимо запускаемыми компонентами.
 
-Реализовано:
-
-- Redis-клиент в `app/core/redis.py`;
-- Cache-Aside для `GET /menu/items` с ключом `menu:all` и TTL 300 секунд;
-- кеширование меню по категории `menu:category:{id}` с TTL 600 секунд;
-- событийная инвалидация после создания и изменения блюда;
-- Redis lock при заполнении кеша для защиты от cache stampede;
-- прогрев `menu:all` при старте приложения;
-- отказоустойчивый fallback: при недоступном Redis чтение продолжается из PostgreSQL;
-- Locust-сценарий в `locustfile.py`.
-
-Кеш находится в `MenuRepository`, потому что Redis является инфраструктурной деталью. `MenuService` знает только о методах репозитория и не импортирует Redis.
-
-```text
-GET /menu/items
-    -> MenuService.get_items()
-    -> MenuRepository.get_all()
-       -> Redis hit: вернуть кеш
-       -> Redis miss: PostgreSQL -> Redis SETEX -> вернуть данные
-```
-
-## Запуск
+## Быстрый запуск
 
 ```bash
-cd lab2/sirius_food
+cp .env.example .env
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
-docker compose up -d db redis
+docker compose up --build
+```
+
+Compose запускает PostgreSQL, Redis, RabbitMQ, FastAPI, gRPC-сервис, Celery Worker, Beat, Flower, Outbox Publisher и три event consumer-а.
+
+Интерфейсы:
+
+- Swagger: `http://127.0.0.1:8000/docs`;
+- Flower: `http://127.0.0.1:5555`;
+- RabbitMQ Management: `http://127.0.0.1:15672`, логин и пароль `sirius`;
+- gRPC: `localhost:50051`.
+
+Для запуска без контейнеризации приложения:
+
+```bash
+docker compose up -d db redis rabbitmq
 alembic upgrade head
 DEBUG=true python -m uvicorn app.main:app --reload
 ```
 
-Для текущего `docker-compose.yml` PostgreSQL доступен на `localhost:1432`, Redis на `localhost:6379`.
+## Лабораторная работа 5 Celery
 
-Swagger: `http://127.0.0.1:8000/docs`.
+После создания заказа слой `OrderService` вызывает порт `OrderTaskDispatcher`. Celery-адаптер ставит три независимые задачи:
 
-## Основные сценарии проверки
+- генерация PDF-чека;
+- отправка email;
+- отправка SMS.
 
-1. Зарегистрировать пользователя:
+Роутер не импортирует задачи и не содержит фоновой бизнес-логики. Все задачи используют JSON, late acknowledgement и `worker_prefetch_multiplier=1`.
 
-```bash
-curl -X POST http://127.0.0.1:8000/users/register \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"student@example.com","password":"strong-pass","phone":"+79991234567"}'
-```
+### Результаты замера
 
-2. Получить токены:
+| Режим | Выполняемая работа | Время |
+|---|---|---:|
+| Синхронно | PDF 2 с + email 1 с + SMS 1 с | 4,03 с |
+| Celery | Постановка трёх сообщений в Redis | 0,087 с |
 
-```bash
-curl -X POST http://127.0.0.1:8000/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"student@example.com","password":"strong-pass"}'
-```
+Постановка задач стала примерно в 46 раз быстрее синхронного выполнения имитаций. Для отчётного замера использовалась отдельная Redis DB, сообщения после проверки удалены.
 
-3. Вызвать `GET /menu/items`: первый запрос создаёт кеш `menu:all`, следующие читают Redis.
+Надёжность:
 
-4. Вызвать `POST /orders/create` без `user_id`, передав только `item_id` и `quantity` вместе с Bearer-токеном.
+- email и SMS используют exponential backoff, jitter и три ретрая;
+- после окончательного падения envelope задачи публикуется в очередь `dlq`;
+- ключи `order:{id}:{effect}:completed` предотвращают повторный эффект;
+- Redis lock создаётся атомарно через `SET NX EX`;
+- Beat раз в минуту обновляет статистику заказов в Redis;
+- Flower показывает состояние задач на порту `5555`.
 
-5. Проверить, что запрос без токена даёт `401`, неверная роль даёт `403`, а попытка отменить чужой заказ даёт `403`.
-
-## Нагрузочное тестирование
-
-Baseline выполняется до кеширования, повторный замер после него:
+Ручной запуск:
 
 ```bash
-locust -f locustfile.py --host=http://127.0.0.1:8000
+celery -A app.core.celery_app:celery_app worker -l info -Q default
+celery -A app.core.celery_app:celery_app beat -l info
+celery -A app.core.celery_app:celery_app flower --port=5555
 ```
 
-Открыть `http://localhost:8089`, выбрать 500 пользователей и spawn rate 10. В отчёте сравниваются RPS, средняя latency, p95 и число запросов к PostgreSQL.
+## Практическая работа 6 gRPC
 
-| Метрика | До Redis | После Redis |
-|---|---:|---:|
-| RPS | заполнить по Locust | заполнить по Locust |
-| Средняя latency | заполнить по Locust | заполнить по Locust |
-| p95 latency | заполнить по Locust | заполнить по Locust |
-| Нагрузка PostgreSQL | высокая | низкая после cache warm-up |
+Контракт находится в `proto/delivery.proto`. Сгенерированные модули хранятся в `app/generated`, сервер — в `services/delivery`.
 
-## Тесты
+Поддержаны методы:
+
+- `AssignCourier`, `CompleteDelivery`, `GetDelivery`;
+- `ListCourierDeliveries` для сохранения HTTP API монолита;
+- `TrackDelivery` с server streaming;
+- `ChatWithCourier` с bidirectional streaming.
+
+Монолит обращается к сети только через `DeliveryGrpcClient`. Клиент задаёт deadline и преобразует `NOT_FOUND`, `PERMISSION_DENIED`, `FAILED_PRECONDITION`, `UNAVAILABLE` и `DEADLINE_EXCEEDED` в прикладные ошибки и HTTP-коды.
 
 ```bash
-PYTHONPATH=. python -m pytest
+python -m grpc_tools.protoc \
+  -Iproto \
+  --python_out=app/generated \
+  --grpc_python_out=app/generated \
+  proto/delivery.proto
+
+python -m services.delivery.server
+python scripts/delivery_chat_client.py
 ```
+
+После повторной генерации в `delivery_pb2_grpc.py` нужно сохранить package-import:
+
+```python
+from app.generated import delivery_pb2 as delivery__pb2
+```
+
+## Практическая работа 7 Event Driven Architecture
+
+### События
+
+- `OrderPaid`;
+- `DeliveryFailed`;
+- `OrderCancelled`.
+
+Envelope содержит `event_id`, `event_type`, `event_version`, `occurred_at`, `correlation_id` и `payload`.
+
+### Transactional Outbox
+
+`POST /orders/{id}/pay` в одной транзакции:
+
+1. списывает стоимость с баланса;
+2. переводит заказ в `paid`;
+3. сохраняет `OrderPaid` в `outbox_events`.
+
+Outbox Publisher читает неопубликованные строки с `FOR UPDATE SKIP LOCKED`, публикует persistent-сообщение с publisher confirms и только после успеха заполняет `published_at`. При недоступном RabbitMQ заказ и событие остаются в PostgreSQL.
+
+### Идемпотентность и DLQ
+
+Consumer перед бизнес-изменением вставляет `(consumer_name, event_id)` в `processed_events`. Составной ключ нужен, потому что одно событие должны независимо обработать кухня и доставка.
+
+Ошибка обрабатывается не более трёх раз. Счётчик хранится в заголовке `x-retry-count`; после исчерпания попыток сообщение отклоняется без requeue и RabbitMQ переносит его в `<queue>.dlq`.
+
+### Saga
+
+```text
+OrderPaid
+  └── Delivery consumer
+      ├── курьер найден → Delivery(in_progress)
+      └── курьера нет → DeliveryFailed
+                            └── Compensation consumer
+                                ├── status = cancelled
+                                ├── возврат order.total
+                                └── OrderCancelled
+```
+
+Компенсация идемпотентна: повторный `DeliveryFailed` с тем же `event_id` не возвращает деньги второй раз.
+
+## Проверка
+
+```bash
+PYTHONPATH=. python -m pytest -q
+docker compose config --quiet
+alembic heads
+```
+
+Проверенный результат: 13 unit-тестов, валидный Compose и единственная голова миграций `0003_event_architecture`.
+
+Основной end-to-end сценарий:
+
+1. зарегистрировать пользователя и пополнить баланс;
+2. создать блюдо и заказ;
+3. оплатить `POST /orders/{id}/pay`;
+4. проверить `outbox_events` и RabbitMQ exchange `sirius.events`;
+5. убедиться, что кухня создала одну запись при повторной доставке события;
+6. при отсутствии курьера проверить отмену и однократный возврат средств.
+
+Во время реализации этот сценарий был проверен на реальных PostgreSQL и RabbitMQ: событие независимо доставлено в две очереди, повтор кухни пропущен, Saga вернула 250 рублей ровно один раз и создала `OrderCancelled`.
