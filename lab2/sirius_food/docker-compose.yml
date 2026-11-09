@@ -52,7 +52,7 @@ services:
       RABBITMQ_URL: amqp://sirius:sirius@rabbitmq:5672/
       DELIVERY_GRPC_URL: delivery-grpc:50051
       DEBUG: "true"
-      ALLOWED_ORIGINS: '["http://localhost:3000"]'
+      ALLOWED_ORIGINS: '["http://localhost:3000","http://localhost:3001"]'
     ports:
       - "8000:8000"
     depends_on:
@@ -117,7 +117,7 @@ services:
 
   celery-worker:
     build: .
-    command: celery -A app.core.celery_app:celery_app worker --loglevel=info --queues=default
+    command: celery -A app.core.celery_app:celery_app worker --loglevel=info --queues=default --events
     environment: *app_environment
     depends_on:
       db:
@@ -142,6 +142,19 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+
+  frontend:
+    build:
+      context: ../sirius_food_frontend
+    command: npm run dev -- --hostname 0.0.0.0 --port 3000
+    environment:
+      API_URL: http://api:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3001:3000"
+    depends_on:
+      api:
+        condition: service_started
 
 volumes:
   pg_data:
