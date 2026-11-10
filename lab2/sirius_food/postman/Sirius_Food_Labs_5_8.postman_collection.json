@@ -1,0 +1,318 @@
+{
+  "info": {
+    "_postman_id": "b1f5d2d8-b3bf-4ce4-a32e-5d7675be58c8",
+    "name": "Сириус Еда — лабораторные 5–8",
+    "description": "Готовый последовательный сценарий защиты лабораторных работ 5–8. Перед запуском выполните docker compose up --build -d и docker compose exec api python scripts/prepare_demo.py. Запросы запускайте сверху вниз. Коллекция сама сохраняет токены, ID блюда, заказов и доставки.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 — Подготовка",
+      "item": [
+        {
+          "name": "1. Войти как администратор",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('Успешная авторизация администратора', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+              "pm.collectionVariables.set('admin_token', data.access_token);",
+              "if (data.refresh_token) pm.collectionVariables.set('admin_refresh_token', data.refresh_token);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{demo_password}}\"\n}"},
+            "url": {"raw": "{{api_base}}/auth/login", "host": ["{{api_base}}"], "path": ["auth", "login"]},
+            "description": "Сохраняет access token в переменную admin_token."
+          }
+        },
+        {
+          "name": "2. Войти как курьер",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('Успешная авторизация курьера', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+              "pm.collectionVariables.set('courier_token', data.access_token);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"email\": \"{{courier_email}}\",\n  \"password\": \"{{demo_password}}\"\n}"},
+            "url": {"raw": "{{api_base}}/auth/login", "host": ["{{api_base}}"], "path": ["auth", "login"]},
+            "description": "Сохраняет access token в переменную courier_token."
+          }
+        },
+        {
+          "name": "3. Получить меню и выбрать демо-блюдо",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('Меню доступно', () => pm.response.to.have.status(200));",
+              "const items = pm.response.json();",
+              "pm.expect(items).to.be.an('array').that.is.not.empty;",
+              "const demo = items.find(item => item.name === 'Демо сырники с малиной') || items[0];",
+              "pm.collectionVariables.set('item_id', String(demo.id));",
+              "pm.collectionVariables.set('item_name', demo.name);",
+              "console.log('Выбрано блюдо:', demo.name, 'ID:', demo.id);"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{api_base}}/menu/items", "host": ["{{api_base}}"], "path": ["menu", "items"]},
+            "description": "Находит «Демо сырники с малиной» и сохраняет item_id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "ЛР 5 — Celery",
+      "description": "Создание заказа отвечает сразу, а PDF, email и SMS выполняются Celery Worker в фоне.",
+      "item": [{
+        "name": "4. Создать первый заказ — запускает 3 Celery-задачи",
+        "event": [{
+          "listen": "test",
+          "script": {"exec": [
+            "pm.test('Заказ создан', () => pm.response.to.have.status(200));",
+            "pm.test('API не ждёт фоновые операции', () => pm.expect(pm.response.responseTime).to.be.below(1500));",
+            "const data = pm.response.json();",
+            "pm.expect(data.order_id).to.be.a('number');",
+            "pm.collectionVariables.set('order1_id', String(data.order_id));",
+            "console.log('Первый заказ:', data.order_id, 'Время ответа:', pm.response.responseTime, 'мс');"
+          ]}
+        }],
+        "request": {
+          "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+          "method": "POST",
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": {"mode": "raw", "raw": "{\n  \"item_id\": {{item_id}},\n  \"quantity\": 1\n}"},
+          "url": {"raw": "{{api_base}}/orders/create", "host": ["{{api_base}}"], "path": ["orders", "create"]},
+          "description": "Сохраняет order1_id. После запроса в Flower появятся generate_pdf, send_email и send_sms."
+        }
+      }]
+    },
+    {
+      "name": "ПР 7 — RabbitMQ и Outbox",
+      "item": [
+        {
+          "name": "5. Оплатить первый заказ — публикует OrderPaid",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('Оплата успешна', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.expect(data.order_status).to.eql('paid');",
+              "pm.expect(String(data.order_id)).to.eql(pm.collectionVariables.get('order1_id'));"
+            ]}
+          }],
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [],
+            "url": {"raw": "{{api_base}}/orders/{{order1_id}}/pay", "host": ["{{api_base}}"], "path": ["orders", "{{order1_id}}", "pay"]},
+            "description": "После запроса подождите 3–5 секунд: Outbox Publisher опубликует событие, кухня создаст запись, delivery назначит курьера."
+          }
+        },
+        {
+          "name": "6. Повторная оплата отклоняется — ожидается 409",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('Повторная оплата защищена бизнес-правилом', () => pm.response.to.have.status(409));",
+              "pm.expect(pm.response.json().detail).to.include('оплачен');"
+            ]}
+          }],
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [],
+            "url": {"raw": "{{api_base}}/orders/{{order1_id}}/pay", "host": ["{{api_base}}"], "path": ["orders", "{{order1_id}}", "pay"]},
+            "description": "Негативный сценарий: ответ 409 здесь является правильным."
+          }
+        },
+        {
+          "name": "7. Посмотреть заказы кухни",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('Администратор видит заказы кухни', () => pm.response.to.have.status(200));",
+              "pm.expect(pm.response.json()).to.be.an('array');"
+            ]}
+          }],
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{api_base}}/orders/kitchen/orders", "host": ["{{api_base}}"], "path": ["orders", "kitchen", "orders"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "ПР 6 — gRPC delivery",
+      "item": [{
+        "name": "8. Получить доставки demo-курьера через HTTP → gRPC",
+        "event": [{
+          "listen": "test",
+          "script": {"exec": [
+            "pm.test('gRPC delivery-сервис ответил', () => pm.response.to.have.status(200));",
+            "const deliveries = pm.response.json();",
+            "pm.expect(deliveries).to.be.an('array').that.is.not.empty;",
+            "const orderId = Number(pm.collectionVariables.get('order1_id'));",
+            "const delivery = deliveries.find(item => item.order_id === orderId) || deliveries[0];",
+            "pm.collectionVariables.set('delivery_id', String(delivery.id));",
+            "pm.expect(delivery.status).to.be.oneOf(['in_progress', 'on_the_way', 'delivered']);"
+          ]}
+        }],
+        "request": {
+          "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{courier_token}}", "type": "string"}]},
+          "method": "GET",
+          "header": [],
+          "url": {"raw": "{{api_base}}/delivery/my", "host": ["{{api_base}}"], "path": ["delivery", "my"]},
+          "description": "Не запускайте tracking до Saga — иначе первый курьер освободится."
+        }
+      }]
+    },
+    {
+      "name": "ПР 7 — Saga компенсация",
+      "item": [
+        {
+          "name": "9. Создать второй заказ",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('Второй заказ создан', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.collectionVariables.set('order2_id', String(data.order_id));"
+            ]}
+          }],
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"item_id\": {{item_id}},\n  \"quantity\": 1\n}"},
+            "url": {"raw": "{{api_base}}/orders/create", "host": ["{{api_base}}"], "path": ["orders", "create"]}
+          }
+        },
+        {
+          "name": "10. Оплатить второй заказ — запускает Saga",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('Первичная оплата успешна', () => pm.response.to.have.status(200));",
+              "pm.expect(pm.response.json().order_status).to.eql('paid');",
+              "console.log('Подождите 5 секунд: Saga асинхронно отменит заказ и вернёт деньги.');"
+            ]}
+          }],
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [],
+            "url": {"raw": "{{api_base}}/orders/{{order2_id}}/pay", "host": ["{{api_base}}"], "path": ["orders", "{{order2_id}}", "pay"]},
+            "description": "Через несколько секунд статус в БД станет cancelled, а стоимость вернётся на баланс."
+          }
+        }
+      ]
+    },
+    {
+      "name": "ПР 6 — Streaming после Saga",
+      "item": [{
+        "name": "11. Server streaming статусов доставки",
+        "event": [{
+          "listen": "test",
+          "script": {"exec": [
+            "pm.test('Поток доставки завершён успешно', () => pm.response.to.have.status(200));",
+            "pm.test('Получены статусы доставки', () => {",
+            "  pm.expect(pm.response.text()).to.include('in_progress');",
+            "  pm.expect(pm.response.text()).to.include('delivered');",
+            "});"
+          ]}
+        }],
+        "request": {
+          "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+          "method": "GET",
+          "header": [{"key": "Accept", "value": "application/x-ndjson"}],
+          "url": {"raw": "{{api_base}}/delivery/track/{{order1_id}}", "host": ["{{api_base}}"], "path": ["delivery", "track", "{{order1_id}}"]},
+          "description": "Ответ занимает около 4 секунд: in_progress → on_the_way → delivered."
+        }
+      }]
+    },
+    {
+      "name": "ПР 8 — Next.js SSR, CSR и SEO",
+      "item": [
+        {
+          "name": "12. SSR-страница меню — данные есть в HTML",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('Next.js вернул HTML', () => pm.response.to.have.status(200));",
+              "pm.test('SSR включил блюдо в исходный HTML', () => pm.expect(pm.response.text()).to.include('Демо сырники с малиной'));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{frontend_base}}/menu", "host": ["{{frontend_base}}"], "path": ["menu"]}
+          }
+        },
+        {
+          "name": "13. SEO страницы блюда",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('Страница блюда доступна', () => pm.response.to.have.status(200));",
+              "const html = pm.response.text();",
+              "pm.test('Есть title и Open Graph', () => {",
+              "  pm.expect(html).to.include('<title>');",
+              "  pm.expect(html).to.include('og:title');",
+              "  pm.expect(html).to.include(pm.collectionVariables.get('item_name'));",
+              "});"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{frontend_base}}/menu/{{item_id}}", "host": ["{{frontend_base}}"], "path": ["menu", "{{item_id}}"]}
+          }
+        },
+        {
+          "name": "14. CSR-страница — данные загружаются браузером",
+          "event": [{
+            "listen": "test",
+            "script": {"exec": [
+              "pm.test('CSR shell доступен', () => pm.response.to.have.status(200));",
+              "pm.test('Блюда отсутствуют в исходном CSR HTML', () => pm.expect(pm.response.text()).not.to.include('Демо сырники с малиной'));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{frontend_base}}/menu-csr", "host": ["{{frontend_base}}"], "path": ["menu-csr"]},
+            "description": "Postman не выполняет React JavaScript, поэтому получает CSR-каркас без блюд."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {"key": "api_base", "value": "http://127.0.0.1:8000", "type": "string"},
+    {"key": "frontend_base", "value": "http://127.0.0.1:3001", "type": "string"},
+    {"key": "admin_email", "value": "demo.admin@example.com", "type": "string"},
+    {"key": "courier_email", "value": "demo.courier@example.com", "type": "string"},
+    {"key": "demo_password", "value": "demo-password", "type": "string"},
+    {"key": "admin_token", "value": "", "type": "string"},
+    {"key": "admin_refresh_token", "value": "", "type": "string"},
+    {"key": "courier_token", "value": "", "type": "string"},
+    {"key": "item_id", "value": "", "type": "string"},
+    {"key": "item_name", "value": "", "type": "string"},
+    {"key": "order1_id", "value": "", "type": "string"},
+    {"key": "order2_id", "value": "", "type": "string"},
+    {"key": "delivery_id", "value": "", "type": "string"}
+  ]
+}

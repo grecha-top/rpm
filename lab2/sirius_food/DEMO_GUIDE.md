@@ -1,20 +1,26 @@
 # Демонстрация лабораторных работ 5–8
 
-Этот сценарий поднимает весь стенд одной командой и готовит повторяемые demo-данные, не удаляя существующие пользовательские записи.
+HTTP-запросы собраны в Postman-коллекции `postman/Sirius_Food_Labs_5_8.postman_collection.json`. В этом файле оставлены подготовка стенда и проверки, которые нельзя полноценно выполнить обычным Postman HTTP-запросом.
 
-## 1. Поднять всё сразу
-
-Из каталога backend:
+## 1. Поднять стенд и подготовить данные
 
 ```bash
 cd /Users/ulyanagrechishnikova/study/rpm/lab2/sirius_food
 docker compose up --build -d
+docker compose exec api python scripts/prepare_demo.py
 docker compose ps
 ```
 
-Первый запуск скачивает образы и зависимости и может занять несколько минут. Должны работать PostgreSQL, Redis, RabbitMQ, FastAPI, Celery Worker, Beat, Flower, gRPC, event consumer-ы и Next.js.
+Скрипт можно запускать повторно: он очищает предыдущие demo-заказы и возвращает базу в исходное состояние.
 
-Адреса:
+```text
+Администратор: demo.admin@example.com
+Курьер:        demo.courier@example.com
+Пароль:        demo-password
+Баланс:        10000 рублей
+```
+
+Интерфейсы:
 
 | Компонент | Адрес | Доступ |
 |---|---|---|
@@ -24,81 +30,38 @@ docker compose ps
 | RabbitMQ | http://localhost:15672 | `sirius` / `sirius` |
 | gRPC | `localhost:50051` | через клиент |
 
-Порт `3001` выбран потому, что `3000` занят другим локальным проектом.
+## 2. Импорт и порядок работы в Postman
 
-## 2. Подготовить данные
+1. Нажать **Import**.
+2. Выбрать `postman/Sirius_Food_Labs_5_8.postman_collection.json`.
+3. Открыть коллекцию «Сириус Еда — лабораторные 5–8».
+4. Выполнять запросы по номерам от 1 до 14.
+5. После запросов №5 и №10 подождать 3–5 секунд: Outbox, RabbitMQ consumer-ы и Saga работают асинхронно.
 
-```bash
-docker compose exec api python scripts/prepare_demo.py
-```
+Коллекция сама сохраняет `admin_token`, `courier_token`, `item_id`, `order1_id`, `order2_id` и `delivery_id`. Tracking первого заказа расположен после Saga специально: если завершить доставку раньше, курьер освободится и компенсация второго заказа не сработает.
 
-Скрипт можно запускать повторно. Он создаёт или обновляет только записи `demo.*@example.com`, очищает их старые заказы и оставляет одного свободного demo-курьера.
+При запуске через Collection Runner установите задержку между запросами не менее 1000 мс. Для защиты удобнее отправлять запросы вручную, чтобы параллельно показывать Flower, RabbitMQ и базу.
 
-Данные:
+## 3. ЛР 5 — Flower, Celery Worker, идемпотентность и DLQ
 
-```text
-Администратор: demo.admin@example.com
-Курьер:        demo.courier@example.com
-Пароль:        demo-password
-Баланс:        10000 рублей
-```
+После Postman-запроса №4 открыть Flower: http://localhost:5555. Там должны появиться:
 
-Подготовить переменные терминала:
+- `orders.generate_pdf`;
+- `orders.send_email`;
+- `orders.send_sms`.
 
-```bash
-API=http://127.0.0.1:8000
-
-ADMIN_TOKEN=$(curl -sS -X POST "$API/auth/login" \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"demo.admin@example.com","password":"demo-password"}' \
-  | jq -r '.access_token')
-
-COURIER_TOKEN=$(curl -sS -X POST "$API/auth/login" \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"demo.courier@example.com","password":"demo-password"}' \
-  | jq -r '.access_token')
-
-ITEM_ID=$(curl -sS "$API/menu/items" \
-  | jq -r '.[] | select(.name=="Демо сырники с малиной") | .id')
-
-echo "ITEM_ID=$ITEM_ID"
-```
-
-Если `jq` не установлен, те же действия можно выполнить через Swagger.
-
-## 3. Лабораторная работа 5 Celery
-
-Открыть Flower: http://localhost:5555
-
-Создать первый заказ и сохранить ID:
-
-```bash
-time curl -sS -X POST "$API/orders/create" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d "{\"item_id\":$ITEM_ID,\"quantity\":1}" \
-  | tee /tmp/sirius-order-1.json
-
-ORDER1=$(jq -r '.order_id' /tmp/sirius-order-1.json)
-echo "ORDER1=$ORDER1"
-```
-
-Показать:
+Логи Worker и Beat:
 
 ```bash
 docker compose logs --tail=100 celery-worker
 docker compose logs --tail=100 celery-beat
 ```
 
-В Flower должны появиться:
-
-- `orders.generate_pdf`;
-- `orders.send_email`;
-- `orders.send_sms`.
-
-Проверка идемпотентности PDF:
+Проверка идемпотентности одной и той же фоновой задачи:
 
 ```bash
+ORDER1=ID_ИЗ_ПЕРЕМЕННОЙ_POSTMAN_order1_id
+
 docker compose exec api python -c \
   "from app.tasks.orders import generate_order_pdf; generate_order_pdf.delay($ORDER1); generate_order_pdf.delay($ORDER1)"
 
@@ -106,9 +69,9 @@ sleep 3
 docker compose logs --tail=50 celery-worker
 ```
 
-Повторная задача вернёт `pdf already completed`, не создавая второй эффект.
+Обе задачи получит Worker, но повторная вернёт `pdf already completed`.
 
-Проверка ретраев и Celery DLQ:
+Ретраи и Celery DLQ:
 
 ```bash
 docker compose exec api python -c \
@@ -119,22 +82,11 @@ docker compose logs --tail=120 celery-worker
 docker compose exec redis redis-cli -n 1 LLEN dlq
 ```
 
-ID `5000` специально вызывает ошибку email. После трёх ретраев envelope остаётся в `dlq`.
+ID `5000` намеренно вызывает ошибку. После трёх ретраев envelope остаётся в очереди `dlq`.
 
-Что сказать: API только ставит тяжёлые операции в Redis, Worker выполняет их после HTTP-ответа; Beat запускает периодическую статистику; `SET NX EX` защищает от дублей.
+## 4. ПР 7 — содержимое Outbox, обработанные события и RabbitMQ DLQ
 
-## 4. Практическая работа 7 RabbitMQ и Outbox
-
-Оплатить первый заказ:
-
-```bash
-curl -sS -X POST "$API/orders/$ORDER1/pay" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" | jq
-
-sleep 4
-```
-
-Показать Outbox и независимых consumer-ов:
+После Postman-запроса №5 показать данные, которые не возвращаются HTTP API:
 
 ```bash
 docker compose exec -T db psql -U sirius -d sirius_food -c \
@@ -147,7 +99,7 @@ docker compose exec -T db psql -U sirius -d sirius_food -c \
   "SELECT * FROM kitchen_orders ORDER BY id DESC LIMIT 10;"
 ```
 
-В RabbitMQ открыть:
+В RabbitMQ Management открыть:
 
 - Exchanges → `sirius.events`;
 - Queues → `kitchen_queue`;
@@ -155,7 +107,7 @@ docker compose exec -T db psql -U sirius -d sirius_food -c \
 - Queues → `order_compensation_queue`;
 - очереди `*.dlq`.
 
-Проверка RabbitMQ DLQ битым JSON:
+Проверка RabbitMQ DLQ битым сообщением требует прямой публикации в брокер:
 
 ```bash
 docker compose exec api python -c \
@@ -166,49 +118,25 @@ sleep 3
 
 После трёх попыток сообщения появятся в `kitchen_queue.dlq` и `delivery_queue.dlq`.
 
-Что сказать: изменение заказа и `OrderPaid` записываются одной транзакцией; Outbox Publisher публикует событие с publisher confirms; `(consumer_name, event_id)` обеспечивает идемпотентность при at-least-once delivery.
+## 5. ПР 6 — настоящий bidirectional gRPC streaming
 
-## 5. Практическая работа 6 gRPC
-
-Первое `OrderPaid` назначает свободного demo-курьера. Показать доставку:
-
-```bash
-curl -sS "$API/delivery/my" \
-  -H "Authorization: Bearer $COURIER_TOKEN" | jq
-
-docker compose logs --tail=100 delivery-grpc
-```
-
-Bidirectional streaming:
+Unary-вызовы и server streaming доступны через REST-фасад в Postman. Двунаправленный gRPC stream запускается отдельным клиентом:
 
 ```bash
 docker compose exec api python scripts/delivery_chat_client.py
+docker compose logs --tail=100 delivery-grpc
 ```
 
-Пока не запускайте tracking: курьер должен остаться занят для следующего шага Saga.
+Ожидаются ответы вида `Курьер получил: Где заказ?`.
 
-Что сказать: HTTP-контракт монолита сохранён, но delivery выполняется отдельным процессом через Protobuf/gRPC; клиент обрабатывает deadline, `UNAVAILABLE`, `NOT_FOUND` и `PERMISSION_DENIED`.
+## 6. Saga — проверка компенсации в базе
 
-## 6. Saga компенсация
-
-Создать и оплатить второй заказ, пока единственный свободный demo-курьер занят первым:
+После Postman-запроса №10 подождать 5 секунд, затем подставить переменные `order1_id` и `order2_id` из Postman:
 
 ```bash
-ORDER2=$(curl -sS -X POST "$API/orders/create" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d "{\"item_id\":$ITEM_ID,\"quantity\":1}" \
-  | jq -r '.order_id')
+ORDER1=ID_ПЕРВОГО_ЗАКАЗА
+ORDER2=ID_ВТОРОГО_ЗАКАЗА
 
-curl -sS -X POST "$API/orders/$ORDER2/pay" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" | jq
-
-sleep 5
-```
-
-Проверить отмену и возврат:
-
-```bash
 docker compose exec -T db psql -U sirius -d sirius_food -c \
   "SELECT id,status,total FROM orders WHERE id IN ($ORDER1,$ORDER2) ORDER BY id;"
 
@@ -222,56 +150,34 @@ docker compose exec -T db psql -U sirius -d sirius_food -c \
 Ожидается:
 
 - первый заказ — `paid`;
-- второй — `cancelled`;
-- баланс снова содержит стоимость второго заказа;
-- есть `DeliveryFailed` и `OrderCancelled`.
+- второй заказ — `cancelled`;
+- баланс равен `9750`: оплачено только первое блюдо за 250, стоимость второго возвращена;
+- присутствуют `DeliveryFailed` и `OrderCancelled`.
 
-Server streaming первого заказа:
+## 7. ПР 8 — визуальная разница SSR и CSR
 
-```bash
-curl -N "$API/delivery/track/$ORDER1" \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
+Postman-запросы №12–14 анализируют HTML автоматически. Для визуальной демонстрации открыть в браузере:
+
+```text
+http://localhost:3001/menu
+http://localhost:3001/menu-csr
 ```
 
-Статусы приходят с интервалом: `in_progress → on_the_way → delivered`.
+Через **Просмотреть исходный код страницы** показать:
 
-## 7. Практическая работа 8 Next.js
+- в `/menu` названия блюд уже находятся в HTML;
+- в `/menu-csr` блюда появляются только после выполнения JavaScript и клиентского `fetch`.
 
-Frontend уже запущен Compose на http://localhost:3001/menu
+Для строгой защиты на 10 баллов открыть Chrome DevTools → Network/Performance и сравнить FCP и момент появления первой карточки.
 
-SSR:
-
-```bash
-curl -s http://localhost:3001/menu | grep "Демо сырники с малиной"
-```
-
-CSR — блюдо отсутствует в исходном HTML:
-
-```bash
-curl -s http://localhost:3001/menu-csr | grep "Демо сырники с малиной"
-```
-
-Вторая команда не должна ничего вывести.
-
-SEO:
-
-```bash
-curl -s "http://localhost:3001/menu/$ITEM_ID" \
-  | grep -E '<title>|og:title|description'
-```
-
-В браузере показать `Ctrl+U` для `/menu` и `/menu-csr`.
-
-Что сказать: `/menu` — Server Component, данные приходят в готовом HTML; `/menu-csr` получает их после JavaScript; ISR в production кеширует HTML на 60 секунд, а Redis отдельно кеширует backend-данные.
-
-## 8. Финальная проверка
+## 8. Финальная проверка и остановка
 
 ```bash
 docker compose exec api pytest -q
 docker compose ps
 ```
 
-Ожидается `13 passed`, а все сервисы имеют статус `Up`.
+Ожидается `13 passed`, все сервисы имеют статус `Up`.
 
 Общий поток логов:
 
@@ -281,18 +187,14 @@ docker compose logs -f \
   outbox-publisher kitchen-consumer delivery-consumer compensation-consumer frontend
 ```
 
-## 9. Остановка
-
-Остановить контейнеры, сохранив данные:
+Остановить контейнеры с сохранением данных:
 
 ```bash
 docker compose stop
 ```
 
-Снова запустить:
+Вернуть без пересборки:
 
 ```bash
 docker compose start
 ```
-
-Удалять volumes для обычной демонстрации не требуется.
