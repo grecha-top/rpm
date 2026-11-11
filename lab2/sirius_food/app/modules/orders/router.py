@@ -1,8 +1,12 @@
 """HTTP layer for authenticated order workflows."""
-from fastapi import APIRouter, Depends, HTTPException
+from time import perf_counter
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, require_role
+from app.core.logging import get_logger
+from app.core.observability import current_trace_context
 from app.database import get_db
 from app.models import User
 from app.modules.orders.repository import OrderRepository
@@ -17,14 +21,17 @@ from app.tasks.dispatcher import CeleryOrderTaskDispatcher
 
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
-@router.post("/create")
+@router.post("/create", status_code=status.HTTP_201_CREATED)
 def create_order(
     payload: OrderCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    started = perf_counter()
     if payload.quantity <= 0:
         raise HTTPException(status_code=400, detail="Количество должно быть больше нуля")
     try:
@@ -39,17 +46,32 @@ def create_order(
     except ValueError as exc:
         status_code = 404 if str(exc) in {"Пользователь не найден", "Блюдо не найдено"} else 400
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    logger.info(
+        "order_created",
+        order_id=order_id,
+        user_id=current_user.id,
+        item_id=payload.item_id,
+        quantity=payload.quantity,
+        duration_ms=round((perf_counter() - started) * 1000, 2),
+        correlation_id=request.state.correlation_id,
+    )
     return {"status": "success", "order_id": order_id}
 
 
 @router.post("/{order_id}/pay")
 def pay_order(
     order_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
-        order = OrderService(OrderRepository(db)).pay_order(order_id, current_user)
+        order = OrderService(OrderRepository(db)).pay_order(
+            order_id,
+            current_user,
+            correlation_id=request.state.correlation_id,
+            trace_context=current_trace_context(),
+        )
     except OrderNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Заказ не найден") from exc
     except AccessDeniedError as exc:

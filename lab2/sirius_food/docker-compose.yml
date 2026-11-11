@@ -33,6 +33,7 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+      - "15692:15692"
     volumes:
       - rabbit_data:/var/lib/rabbitmq
     healthcheck:
@@ -53,6 +54,12 @@ services:
       DELIVERY_GRPC_URL: delivery-grpc:50051
       DEBUG: "true"
       ALLOWED_ORIGINS: '["http://localhost:3000","http://localhost:3001"]'
+      OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      ENVIRONMENT: docker
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-1.0}
+      OBSERVABILITY_DEMO_ENABLED: ${OBSERVABILITY_DEMO_ENABLED:-true}
     ports:
       - "8000:8000"
     depends_on:
@@ -64,6 +71,8 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   delivery-grpc:
     build: .
@@ -156,6 +165,73 @@ services:
       api:
         condition: service_started
 
+  locust:
+    profiles: ["tools"]
+    build: .
+    command: >-
+      locust -f locustfile.py --host=http://api:8000 --headless
+      -u ${LOCUST_USERS:-100} -r ${LOCUST_SPAWN_RATE:-10}
+      -t ${LOCUST_DURATION:-30s} --csv=/app/results/lab10-current
+      --html=/app/results/lab10-current.html
+    environment:
+      <<: *app_environment
+      LOCUST_ACCESS_TOKEN: ${LOCUST_ACCESS_TOKEN:-}
+      LOCUST_ITEM_ID: ${LOCUST_ITEM_ID:-1}
+    volumes:
+      - ./results:/app/results
+      - ./docs:/app/docs
+    depends_on:
+      api:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: sirius_prometheus
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      api:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: sirius_redis_exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: sirius_grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: sirius_jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"
+      - "4318:4318"
+
 volumes:
   pg_data:
   rabbit_data:
+  grafana_data:

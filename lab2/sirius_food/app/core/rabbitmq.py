@@ -6,6 +6,8 @@ import aio_pika
 from aio_pika import DeliveryMode, ExchangeType, Message
 
 from app.core.config import settings
+from app.core.correlation import CORRELATION_HEADER, get_correlation_id
+from app.core.observability import inject_trace_context, traced
 
 
 EVENT_EXCHANGE = "sirius.events"
@@ -51,7 +53,11 @@ async def declare_consumer_topology(
 
 
 async def publish_event(routing_key: str, payload: dict) -> None:
-    await publish_raw(routing_key, json.dumps(payload).encode("utf-8"))
+    headers = {
+        CORRELATION_HEADER: payload.get("correlation_id") or get_correlation_id(),
+    }
+    inject_trace_context(headers)
+    await publish_raw(routing_key, json.dumps(payload).encode("utf-8"), headers=headers)
 
 
 async def publish_raw(
@@ -67,13 +73,17 @@ async def publish_raw(
             ExchangeType.TOPIC,
             durable=True,
         )
-        await exchange.publish(
-            Message(
-                body=body,
-                headers=headers or {},
-                delivery_mode=DeliveryMode.PERSISTENT,
-                content_type="application/json",
-            ),
-            routing_key=routing_key,
-            mandatory=True,
-        )
+        with traced("rabbitmq.publish", attributes={"messaging.destination": routing_key}):
+            message_headers = dict(headers or {})
+            message_headers.setdefault(CORRELATION_HEADER, get_correlation_id())
+            inject_trace_context(message_headers)
+            await exchange.publish(
+                Message(
+                    body=body,
+                    headers=message_headers,
+                    delivery_mode=DeliveryMode.PERSISTENT,
+                    content_type="application/json",
+                ),
+                routing_key=routing_key,
+                mandatory=True,
+            )

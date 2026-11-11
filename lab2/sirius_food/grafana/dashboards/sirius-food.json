@@ -1,0 +1,45 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "title": "API request rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(rate(http_requests_total[1m])) by (handler, method)", "legendFormat": "{{method}} {{handler}}"}]
+    },
+    {
+      "title": "API latency p95",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le, handler))", "legendFormat": "{{handler}}"}]
+    },
+    {
+      "title": "HTTP 5xx rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "targets": [{"expr": "sum(rate(http_requests_total{status=~\"5..\"}[1m])) by (handler)", "legendFormat": "{{handler}}"}]
+    },
+    {
+      "title": "Kitchen queue depth",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "targets": [{"expr": "rabbitmq_queue_messages{queue=\"kitchen_queue\"}", "legendFormat": "kitchen_queue"}]
+    },
+    {
+      "title": "Redis cache hit rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "targets": [{"expr": "rate(redis_keyspace_hits_total[5m]) / clamp_min(rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]), 1)", "legendFormat": "hit rate"}]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["sirius-food", "lab-9"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "timezone": "browser",
+  "title": "Sirius Food Observability",
+  "uid": "sirius-food-observability",
+  "version": 1
+}

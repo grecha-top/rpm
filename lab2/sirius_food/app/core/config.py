@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     ORDER_TASK_IDEMPOTENCY_TTL: int = 86400
     RABBITMQ_URL: str = "amqp://sirius:sirius@localhost:5672/"
     DELIVERY_GRPC_URL: str = "localhost:50051"
+    ENVIRONMENT: str = "development"
+    SENTRY_DSN: str = ""
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0
+    OBSERVABILITY_DEMO_ENABLED: bool = False
+    OTEL_ENABLED: bool = False
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4318/v1/traces"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

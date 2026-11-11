@@ -1,0 +1,114 @@
+{
+  "consumer": {
+    "name": "Sirius Kitchen"
+  },
+  "interactions": [
+    {
+      "contents": {
+        "content": {
+          "correlation_id": "pact-correlation-42",
+          "event_id": "00000000-0000-4000-8000-000000000001",
+          "event_type": "OrderPaid",
+          "event_version": 1,
+          "occurred_at": "2026-11-24T12:00:00+00:00",
+          "payload": {
+            "amount": 300.0,
+            "currency": "RUB",
+            "customer_id": 7,
+            "order_id": 1,
+            "total": 300.0
+          }
+        },
+        "contentType": "application/json",
+        "encoded": false
+      },
+      "description": "an OrderPaid event",
+      "matchingRules": {
+        "body": {
+          "$.correlation_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.event_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "regex",
+                "regex": "^([0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}|[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12})$"
+              }
+            ]
+          },
+          "$.event_version": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "integer"
+              }
+            ]
+          },
+          "$.occurred_at": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.amount": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "number"
+              }
+            ]
+          },
+          "$.payload.customer_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "integer"
+              }
+            ]
+          },
+          "$.payload.order_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "integer"
+              }
+            ]
+          },
+          "$.payload.total": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "number"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json"
+      },
+      "pending": false,
+      "type": "Asynchronous/Messages"
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.5.13",
+      "models": "1.3.18"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "Sirius Orders"
+  }
+}

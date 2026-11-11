@@ -82,7 +82,13 @@ class OrderService:
             )
         return order_id
 
-    def pay_order(self, order_id: int, current_user):
+    def pay_order(
+        self,
+        order_id: int,
+        current_user,
+        correlation_id: str | None = None,
+        trace_context: dict[str, str] | None = None,
+    ):
         order = self.repository.get_order(order_id)
         if not order:
             raise OrderNotFoundError()
@@ -101,7 +107,11 @@ class OrderService:
                 "order_id": order.id,
                 "customer_id": order.user_id,
                 "amount": order.total,
+                "total": order.total,
+                "currency": "RUB",
             },
+            correlation_id=correlation_id,
+            trace_context=trace_context,
         )
         self.repository.pay_order(
             order,
