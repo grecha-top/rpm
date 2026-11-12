@@ -1,4 +1,4 @@
-# Демонстрация лабораторных работ 5–8
+# Демонстрация лабораторных работ 5–10
 
 HTTP-запросы собраны в Postman-коллекции `postman/Sirius_Food_Labs_5_8.postman_collection.json`. В этом файле оставлены подготовка стенда и проверки, которые нельзя полноценно выполнить обычным Postman HTTP-запросом.
 
@@ -29,18 +29,9 @@ docker compose ps
 | Flower | http://localhost:5555 | — |
 | RabbitMQ | http://localhost:15672 | `sirius` / `sirius` |
 | gRPC | `localhost:50051` | через клиент |
-
-## 2. Импорт и порядок работы в Postman
-
-1. Нажать **Import**.
-2. Выбрать `postman/Sirius_Food_Labs_5_8.postman_collection.json`.
-3. Открыть коллекцию «Сириус Еда — лабораторные 5–8».
-4. Выполнять запросы по номерам от 1 до 14.
-5. После запросов №5 и №10 подождать 3–5 секунд: Outbox, RabbitMQ consumer-ы и Saga работают асинхронно.
-
-Коллекция сама сохраняет `admin_token`, `courier_token`, `item_id`, `order1_id`, `order2_id` и `delivery_id`. Tracking первого заказа расположен после Saga специально: если завершить доставку раньше, курьер освободится и компенсация второго заказа не сработает.
-
-При запуске через Collection Runner установите задержку между запросами не менее 1000 мс. Для защиты удобнее отправлять запросы вручную, чтобы параллельно показывать Flower, RabbitMQ и базу.
+| Prometheus | http://localhost:9090 | — |
+| Grafana | http://localhost:3000 | `admin` / `admin` |
+| Jaeger | http://localhost:16686 | — |
 
 ## 3. ЛР 5 — Flower, Celery Worker, идемпотентность и DLQ
 
@@ -170,14 +161,59 @@ http://localhost:3001/menu-csr
 
 Для строгой защиты на 10 баллов открыть Chrome DevTools → Network/Performance и сравнить FCP и момент появления первой карточки.
 
-## 8. Финальная проверка и остановка
+## 8. ПР 9 — логи, метрики, Sentry и единый trace
+
+```bash
+docker compose exec api python scripts/prepare_demo.py
+docker compose exec api python scripts/demo_lab9_trace.py
+docker compose logs api outbox-publisher kitchen-consumer | grep lab9-
+```
+
+Скрипт напечатает `trace_id` и три сервиса: `sirius-api`, `sirius-outbox`,
+`sirius-kitchen`. Откройте trace по ID в Jaeger. В Grafana откройте дашборд
+`Sirius Food Observability`; Prometheus Targets должны быть `UP`.
+
+Для Sentry укажите `SENTRY_DSN` в `.env`, пересоздайте API и выполните:
+
+```bash
+curl -i http://localhost:8000/debug/sentry \
+  -H 'X-Correlation-ID: sentry-demo-42'
+```
+
+В Sentry покажите exception и tag `correlation_id=sentry-demo-42`.
+
+## 9. ПР 10 — Testcontainers, Locust, CI, Pact и mutmut
+
+```bash
+docker compose run --rm --no-deps \
+  -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  api pytest -q tests/integration
+
+docker compose run --rm --no-deps api pytest -q tests/contract
+./scripts/run_lab10_load.sh
+```
+
+Результаты нагрузки находятся в `docs/lab10-load-report.md` и
+`results/lab10-current.html`. Mutation testing:
+
+```bash
+mutmut run
+mutmut results
+python scripts/check_mutation_results.py
+```
+
+Ожидается 45 мутаций, 0 survived. В GitHub Actions показать jobs `tests` и
+`mutation-tests`; оба должны быть обязательными checks для основной ветки.
+
+## 10. Финальная проверка и остановка
 
 ```bash
 docker compose exec api pytest -q
 docker compose ps
 ```
 
-Ожидается `13 passed`, все сервисы имеют статус `Up`.
+Ожидается успешное выполнение тестов, все сервисы имеют статус `Up`.
 
 Общий поток логов:
 

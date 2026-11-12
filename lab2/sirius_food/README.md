@@ -41,6 +41,12 @@ Compose запускает PostgreSQL, Redis, RabbitMQ, FastAPI, gRPC-серви
 - Flower: `http://127.0.0.1:5555`;
 - RabbitMQ Management: `http://127.0.0.1:15672`, логин и пароль `sirius`;
 - gRPC: `localhost:50051`.
+- Prometheus: `http://127.0.0.1:9090`;
+- Grafana: `http://127.0.0.1:3000` (`admin` / `admin`);
+- Jaeger: `http://127.0.0.1:16686`.
+
+Если стандартные порты заняты, задайте `PROMETHEUS_PORT`, `GRAFANA_PORT`
+и `JAEGER_UI_PORT` перед запуском `docker compose`.
 
 Для запуска без контейнеризации приложения:
 
@@ -49,6 +55,93 @@ docker compose up -d db redis rabbitmq
 alembic upgrade head
 DEBUG=true python -m uvicorn app.main:app --reload
 ```
+
+## Практическая работа 9 Observability
+
+HTTP middleware принимает `X-Correlation-ID` или генерирует UUID, сохраняет его в `request.state` и `ContextVar`, возвращает в заголовке ответа. При оплате заказа ID попадает в envelope `OrderPaid`, затем в заголовок RabbitMQ и JSON-логи кухни. Все прикладные логи пишутся в stdout через `structlog`.
+
+Prometheus автоматически получает RED-метрики FastAPI с `/metrics`, а также метрики RabbitMQ и Redis Exporter. Grafana datasource и дашборд с RPS, p95 latency, 5xx, длиной `kitchen_queue` и cache hit rate создаются автоматически из `grafana/`.
+
+Проверка сквозного ID и единого distributed trace:
+
+```bash
+docker compose up --build -d
+docker compose exec api python scripts/prepare_demo.py
+docker compose exec api python scripts/demo_lab9_trace.py
+docker compose logs api outbox-publisher kitchen-consumer | grep lab9-
+curl -s http://127.0.0.1:8000/metrics | grep http_requests_total
+```
+
+Скрипт завершается успешно только если один trace содержит `sirius-api`,
+`sirius-outbox` и `sirius-kitchen`. W3C `traceparent` сохраняется в Outbox,
+восстанавливается publisher-ом и передаётся в RabbitMQ. OpenTelemetry включён в
+Compose и отправляет spans в Jaeger по OTLP. Для запуска без Compose задайте
+`OTEL_ENABLED=true` и `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces`.
+
+Sentry не требует секрета для обычного запуска. Для демонстрации задайте
+`SENTRY_DSN` в `.env`, пересоздайте API и вызовите контролируемую ошибку:
+
+```bash
+docker compose up -d --force-recreate api
+curl -i http://127.0.0.1:8000/debug/sentry \
+  -H 'X-Correlation-ID: sentry-demo-42'
+```
+
+В Sentry событие `Sirius Food observability demo error` содержит tag
+`correlation_id=sentry-demo-42`. Ручка возвращает 404, если
+`OBSERVABILITY_DEMO_ENABLED=false`.
+
+## Лабораторная работа 10 Production testing
+
+Интеграционные тесты поднимают чистую PostgreSQL 15 через Testcontainers, применяют все Alembic-миграции и откатывают внешнюю транзакцию после каждого теста:
+
+```bash
+pytest -v tests/integration
+pytest -q tests/contract
+pytest --cov=app --cov-report=html
+```
+
+Для запуска интеграционных тестов из контейнера на Docker Desktop:
+
+```bash
+docker compose run --rm --no-deps \
+  -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  api pytest -v tests/integration
+```
+
+Pact V4-контракт генерируется consumer-описанием кухни, а provider verification
+вызывает настоящий `OrderService`:
+
+```bash
+python scripts/generate_order_paid_pact.py
+pytest -q tests/contract
+```
+
+Mutation testing настроен в `setup.cfg`. Итоговый прогон: 45 мутаций, 44 убиты
+тестами, одна остановлена timeout, выживших нет:
+
+```bash
+mutmut run
+mutmut results
+python scripts/check_mutation_results.py
+```
+
+Нагрузочный профиль Locust распределён как 70% меню, 20% карточка и 10%
+создание заказа. Воспроизводимый прогон на 100 пользователей:
+
+```bash
+./scripts/run_lab10_load.sh
+```
+
+Скрипт сам готовит данные и токен, создаёт CSV/HTML и
+`docs/lab10-load-report.md`. В контрольном прогоне на 100 пользователей было
+1259 запросов без ошибок; bottleneck по p95 — `POST /orders/create` (440 мс).
+
+Workflow `.github/workflows/lab2-tests.yml` запускает unit-, настоящий Pact
+provider verification, Testcontainers и mutation gate на каждый push и pull
+request, затрагивающий `lab2`. Чтобы красный CI блокировал merge, в GitHub
+Settings → Branches нужно сделать checks `tests` и `mutation-tests` required.
 
 ## Лабораторная работа 5 Celery
 
