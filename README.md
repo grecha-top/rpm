@@ -10,7 +10,7 @@ Backend-сервис для бронирования мест на меропр�
 - PostgreSQL
 - goose
 - Docker Compose
-
+- lol
 ## Запуск
 
 Настройки приложения и PostgreSQL лежат в `.env`. Для первого запуска можно взять значения из `.env.example`.
